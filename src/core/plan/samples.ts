@@ -84,7 +84,61 @@ export const OFFICE_DAY: DrillScenario = {
   seed: 11,
 };
 
+// A terraced house let as shared rooms (an HMO): one stair, bedrooms on two upper floors, a fire at night.
+const H = 2.6;
+const floorRooms = (f: number, names: [string, string, string]) => [
+  { id: `stair${f}`, name: f === 0 ? "Stair (ground)" : `Stair (floor ${f})`, floor: f, x: 0, y: 0, widthM: 2, depthM: 4, heightM: 2.8, kind: "stair" as const },
+  { id: `hall${f}`, name: f === 0 ? "Hall" : `Landing ${f}`, floor: f, x: 2, y: 0, widthM: 1.5, depthM: 10, heightM: H, kind: "corridor" as const },
+  { id: `${names[0].toLowerCase().replace(/\W+/g, "")}`, name: names[0], floor: f, x: 3.5, y: 0, widthM: 2.8, depthM: 5, heightM: H, kind: "room" as const },
+  { id: `${names[1].toLowerCase().replace(/\W+/g, "")}`, name: names[1], floor: f, x: 3.5, y: 5, widthM: 2.8, depthM: 5, heightM: H, kind: "room" as const },
+  { id: `${names[2].toLowerCase().replace(/\W+/g, "")}`, name: names[2], floor: f, x: 0, y: 4, widthM: 2, depthM: 6, heightM: H, kind: "room" as const },
+];
+
+export const HOUSE: Plan = {
+  schemaVersion: 1,
+  title: "Shared house (3 floors)",
+  floorHeightM: 2.8,
+  rooms: [
+    ...floorRooms(0, ["Lounge", "Kitchen", "WC"]),
+    ...floorRooms(1, ["Bedroom 1", "Bedroom 2", "Bathroom"]),
+    ...floorRooms(2, ["Bedroom 3", "Bedroom 4", "Shower room"]),
+  ],
+  doors: [
+    { id: "FD", a: "hall0", b: OUTSIDE, widthM: 0.9, x: 2.75, y: 0, state: "closed", mainEntrance: true },
+    { id: "BD", a: "kitchen", b: OUTSIDE, widthM: 0.8, x: 4.9, y: 10, state: "closed" },
+    { id: "L0", a: "hall0", b: "lounge", widthM: 0.8, x: 3.5, y: 2.5, state: "open" },
+    { id: "K0", a: "hall0", b: "kitchen", widthM: 0.8, x: 3.5, y: 7.5, state: "closed" },
+    { id: "W0", a: "hall0", b: "wc", widthM: 0.7, x: 2, y: 7, state: "closed" },
+    { id: "T0", a: "hall0", b: "stair0", widthM: 0.9, x: 2, y: 2, state: "open" },
+    { id: "S1", a: "stair0", b: "stair1", widthM: 0.9, x: 1, y: 2, state: "open", stair: { lengthM: 6 } },
+    { id: "T1", a: "hall1", b: "stair1", widthM: 0.9, x: 2, y: 2, state: "open" },
+    { id: "R1", a: "hall1", b: "bedroom1", widthM: 0.8, x: 3.5, y: 2.5, state: "closed" },
+    { id: "R2", a: "hall1", b: "bedroom2", widthM: 0.8, x: 3.5, y: 7.5, state: "closed" },
+    { id: "B1", a: "hall1", b: "bathroom", widthM: 0.7, x: 2, y: 7, state: "closed" },
+    { id: "S2", a: "stair1", b: "stair2", widthM: 0.9, x: 1, y: 2, state: "open", stair: { lengthM: 6 } },
+    { id: "T2", a: "hall2", b: "stair2", widthM: 0.9, x: 2, y: 2, state: "open" },
+    { id: "R3", a: "hall2", b: "bedroom3", widthM: 0.8, x: 3.5, y: 2.5, state: "closed" },
+    { id: "R4", a: "hall2", b: "bedroom4", widthM: 0.8, x: 3.5, y: 7.5, state: "closed" },
+    { id: "B2", a: "hall2", b: "showerroom", widthM: 0.7, x: 2, y: 7, state: "closed" },
+  ],
+};
+
+export const HOUSE_NIGHT: DrillScenario = {
+  fire: { room: "lounge", item: "upholstered_chair" },
+  lockedDoors: ["BD"],
+  occupants: [
+    { room: "bedroom1", count: 1, kind: "resident" },
+    { room: "bedroom2", count: 2, kind: "resident" },
+    { room: "bedroom3", count: 1, kind: "resident" },
+    { room: "bedroom4", count: 1, kind: "elderly" },
+  ],
+  alarmDelayS: 60,
+  durationS: 600,
+  seed: 5,
+};
+
 export const SAMPLES = [
-  { plan: CAFE, scenario: CAFE_LUNCH, blurb: "Lunch rush, fryer fire in the kitchen." },
-  { plan: OFFICE, scenario: OFFICE_DAY, blurb: "Working day, stored boxes catch fire downstairs." },
+  { id: "cafe", plan: CAFE, scenario: CAFE_LUNCH, blurb: "Lunch rush, fryer fire in the kitchen." },
+  { id: "office", plan: OFFICE, scenario: OFFICE_DAY, blurb: "Working day, stored boxes catch fire downstairs." },
+  { id: "house", plan: HOUSE, scenario: HOUSE_NIGHT, blurb: "3 a.m., an armchair catches fire in the lounge with its door open; the back door is locked." },
 ];

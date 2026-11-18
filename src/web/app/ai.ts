@@ -137,7 +137,7 @@ export function scenarioSchema(plan: Plan) {
           properties: {
             room: { type: "string", enum: plan.rooms.map((r) => r.id) },
             count: { type: "integer" },
-            kind: { type: "string", enum: ["customer", "staff", "elderly", "parent_with_child", "mobility_impaired"] },
+            kind: { type: "string", enum: ["customer", "staff", "resident", "elderly", "parent_with_child", "mobility_impaired"] },
           },
           required: ["room", "count", "kind"],
         },
@@ -158,7 +158,7 @@ const SCENARIO_RULES = `Turn the drill description into JSON for this building.
 Rules:
 - locked_doors: only doors the description says are locked, blocked, chained or unusable. If it says nothing about doors, use [].
 - occupants: one entry per group of people and room. "customers", "guests", "visitors", "diners" are customer; "staff",
-  "waiters", "cooks", "employees", "cleaner" are staff; "elderly", "older" people are elderly; "families", "parents with kids"
+  "waiters", "cooks", "employees", "cleaner" are staff; "residents", "tenants", "flatmates", people asleep in their own bedrooms are resident; "elderly", "older" people are elderly; "families", "parents with kids"
   are parent_with_child; "wheelchair user" is mobility_impaired. Put people in the room the description says; if it does not
   say, put customers in the main public room and staff where they normally work.
 - fire_item: the closest item from the list. Bins and rubbish are trash_bin. Boxes and stock are stored_boxes.

@@ -3,7 +3,7 @@ import type { Compartment, Scenario as FireScenario, Surface, Vent } from "../fi
 import { fireItem, hrrTable } from "./fireItems";
 import { OUTSIDE, roomById, type Door, type Plan, type Room } from "./types";
 
-export type PersonaKind = "customer" | "staff" | "elderly" | "parent_with_child" | "mobility_impaired";
+export type PersonaKind = "customer" | "staff" | "resident" | "elderly" | "parent_with_child" | "mobility_impaired";
 
 export interface OccupantGroup {
   room: string;
@@ -51,7 +51,7 @@ export function doorFace(r: Room, d: Door): { face: "front" | "back" | "left" | 
 }
 
 /** Builds the two-zone fire model input. Each room is one compartment; each door is a wall vent; stairs are floor vents. */
-export function toFireScenario(plan: Plan, s: DrillScenario): FireScenario {
+export function toFireScenario(plan: Plan, s: DrillScenario, shutOpenFraction = SHUT_DOOR_OPEN_FRACTION): FireScenario {
   const compartments: Compartment[] = plan.rooms.map((r) => ({
     id: r.id,
     widthM: r.widthM,
@@ -80,7 +80,7 @@ export function toFireScenario(plan: Plan, s: DrillScenario): FireScenario {
     }
     const { face, offsetM, wallLenM } = doorFace(ra, d);
     const soffit = Math.min(2.1, ra.heightM);
-    const open = state === "open" ? 1 : SHUT_DOOR_OPEN_FRACTION;
+    const open = state === "open" ? 1 : shutOpenFraction;
     vents.push({ kind: "wall", id: d.id, from: d.a, to: d.b === OUTSIDE ? OUTSIDE : d.b, sillM: 0, soffitM: soffit, widthM: Math.min(d.widthM, wallLenM), face, offsetM, open });
   }
   const room = roomById(plan, s.fire.room) ?? plan.rooms[0]!;

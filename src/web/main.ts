@@ -2,18 +2,19 @@ import "./app/style.css";
 import { HazardField } from "../core/crowd/hazard";
 import { PERSONAS } from "../core/crowd/personas";
 import { runCrowd } from "../core/crowd/sim";
+import { recordingPolicy, replayPolicy, type RecordedDecision, type Recording } from "../core/crowd/recorded";
 import { standardPolicy } from "../core/crowd/standardPolicy";
 import type { CrowdResult, Policy } from "../core/crowd/types";
 import type { Result } from "../core/fire";
 import { planFromRough } from "../core/plan/layout";
 import { FIRE_ITEMS, fireItem } from "../core/plan/fireItems";
 import { SAMPLES } from "../core/plan/samples";
-import { toFireScenario, type DrillScenario, type PersonaKind } from "../core/plan/scenario";
+import { type DrillScenario, type PersonaKind } from "../core/plan/scenario";
 import { OUTSIDE, checkPlan, type Plan } from "../core/plan/types";
 import { applyFixes, factsText, runFacts, type Fix } from "../core/report";
 import { aiPolicy, type AiStats, parseScenario, readPlanPhoto, summariseRun, toDrill, writeAssessment, type Source } from "./app/ai";
 import { deviceStatus, prepareDevice, type DeviceStatus } from "./app/firebase";
-import { runFireWithLimit } from "./app/fireRun";
+import { fireForDrill } from "./app/fireRun";
 import { PlanRenderer } from "./app/render";
 
 type Mode = "standard" | "device" | "cloud";
@@ -28,6 +29,9 @@ interface Run {
   crowd: CrowdResult;
   mode: Mode;
   ai: AiStats | null;
+  shutOpenFraction: number;
+  log: RecordedDecision[] | null; // the AI's answers, so a run can be saved and played back
+  recorded: { model: string; recordedAt: string; questions: number; modelSeconds: number } | null;
   summary?: { text: string; source: Source };
 }
 
@@ -46,6 +50,7 @@ const S = {
   busy: "" as string,
   notes: [] as string[],
   fixes: null as { summary: string; findings: string[]; fixes: Fix[] } | null,
+  fromSample: true,
 };
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -90,6 +95,7 @@ document.getElementById("app")!.innerHTML = `
         <label><input type="radio" name="mode" value="cloud"><span><b>AI in the cloud</b>Gemini plays each person. Faster on most computers.</span></label>
       </div>
       <button class="btn primary" id="run">Run the drill</button>
+      <div id="replaybox"></div>
       <p class="hint" id="busy" aria-live="polite"></p><p class="hint warn" id="err" role="alert"></p>
     </div>
   </section>
@@ -172,15 +178,18 @@ $("#scenario").addEventListener("change", (e) => {
     if (t.dataset.f === "room") o.room = t.value;
   }
   renderScenario();
+  renderReplay();
   if (!current()) draw();
 });
 $("#scenario").addEventListener("click", (e) => {
   const t = e.target as HTMLElement;
   if (t.id === "addocc") { S.scenario.occupants.push({ room: S.plan.rooms[0]!.id, count: 5, kind: "customer" }); renderScenario(); }
   if (t.dataset.del !== undefined) { S.scenario.occupants.splice(Number(t.dataset.del), 1); renderScenario(); }
+  if (t.id === "addocc" || t.dataset.del !== undefined) renderReplay();
 });
 
-function loadPlan(plan: Plan, scenario: DrillScenario, notes: string[] = []) {
+function loadPlan(plan: Plan, scenario: DrillScenario, notes: string[] = [], fromSample = true) {
+  S.fromSample = fromSample;
   S.plan = plan;
   S.scenario = scenario;
   S.notes = notes;
@@ -193,6 +202,7 @@ function loadPlan(plan: Plan, scenario: DrillScenario, notes: string[] = []) {
   renderScenario();
   renderRuns();
   renderResults();
+  renderReplay();
   draw();
 }
 
@@ -244,7 +254,7 @@ $<HTMLInputElement>("#photo").addEventListener("change", async (e) => {
     loadPlan(plan, {
       fire: { room: staffRoom.id, item: "trash_bin" }, lockedDoors: [], occupants: [{ room: biggest.id, count: 20, kind: "customer" }, { room: staffRoom.id, count: 2, kind: "staff" }],
       alarmDelayS: 30, durationS: 600, seed: 7,
-    }, [`Read from the photo in the cloud in ${(a.ms / 1000).toFixed(1)} s. Check the rooms and exits before you trust a run.`, ...notes]);
+    }, [`Read from the photo in the cloud in ${(a.ms / 1000).toFixed(1)} s. Check the rooms and exits before you trust a run.`, ...notes], false);
   } catch (err) {
     S.notes = [`Could not read the photo: ${String(err).slice(0, 180)}`];
     renderPlanHint();
@@ -278,41 +288,85 @@ function renderDevice() {
 
 // ---- running -------------------------------------------------------------------------------------------------
 
-async function simulate(plan: Plan, scenario: DrillScenario, mode: Mode, label: string): Promise<Run> {
+async function simulate(plan: Plan, scenario: DrillScenario, mode: Mode, label: string, opts: { replay?: Recording; forceFraction?: number } = {}): Promise<Run> {
   setBusy("Working out how the fire and smoke spread…");
-  const fo = await runFireWithLimit(toFireScenario(plan, scenario), 45000, (f) => setBusy(`Working out how the fire and smoke spread… ${Math.round(f * 100)} %`));
-  const fire = fo.ok ? fo.result : null;
-  const fireNote = fo.ok ? null : `The fire model stopped (${fo.reason}). People below move without smoke, so this run shows queues only.`;
+  const forceFraction = opts.replay?.shutOpenFraction ?? opts.forceFraction;
+  const { fire, note: fireNote, shutOpenFraction } = await fireForDrill(plan, scenario, setBusy, forceFraction);
   let policy: Policy = standardPolicy;
   let ai: AiStats | null = null;
-  if (mode !== "standard") {
+  let rec: (Policy & { log: RecordedDecision[] }) | null = null;
+  if (opts.replay) policy = replayPolicy(opts.replay);
+  else if (mode !== "standard") {
     const p = aiPolicy(mode, (st) => setBusy(`People are deciding what to do… ${st.answered} choices made by ${mode === "device" ? "Gemini Nano" : "Gemini"}${st.errors ? `, ${st.errors} questions failed` : ""}`));
-    policy = p;
     ai = p.stats;
+    rec = recordingPolicy(p);
+    policy = rec;
   }
-  setBusy(mode === "standard" ? "Moving people…" : "People are deciding what to do…");
-  const crowd = await runCrowd(plan, scenario, fire, policy, { fallback: standardPolicy, maxAiCalls: mode === "device" ? 160 : 400 });
-  return { label, plan, scenario, fire, fireNote, hazard: fire ? new HazardField(fire) : null, crowd, mode, ai };
+  setBusy(mode === "standard" && !opts.replay ? "Moving people…" : "People are deciding what to do…");
+  const crowd = await runCrowd(plan, scenario, fire, policy, { fallback: standardPolicy, maxAiCalls: MAX_AI[mode] });
+  return {
+    label, plan, scenario, fire, fireNote, hazard: fire ? new HazardField(fire) : null, crowd, mode, ai, shutOpenFraction,
+    log: rec?.log ?? null, recorded: opts.replay ? { model: opts.replay.model, recordedAt: opts.replay.recordedAt, questions: opts.replay.questions, modelSeconds: opts.replay.modelSeconds } : null,
+  };
 }
+
+const MAX_AI: Record<Mode, number> = { standard: 0, device: 160, cloud: 400 };
 
 $("#run").addEventListener("click", async () => {
   try {
     const n = S.scenario.occupants.reduce((k, o) => k + o.count, 0);
     if (!n) { setBusy(""); showError("Add some people first."); return; }
     const run = await simulate(structuredClone(S.plan), structuredClone(S.scenario), S.mode, `Run ${S.runs.length + 1}`);
-    S.runs.push(run);
-    S.shown = S.runs.length - 1;
-    S.timeS = 0;
-    S.selected = null;
-    S.fixes = null;
-    renderRuns();
-    renderResults();
-    play(true);
+    addRun(run);
   } catch (e) {
     showError(`The run failed: ${String(e).slice(0, 200)}`);
     return;
   } finally { if (S.busy) setBusy(""); }
 });
+
+// ---- recorded on-device runs ------------------------------------------------------------------------------------
+
+const recordings = new Map<string, Recording | null>();
+async function recordingFor(id: string): Promise<Recording | null> {
+  if (!recordings.has(id)) {
+    try {
+      const r = await fetch(`${import.meta.env.BASE_URL}recorded/${id}.json`);
+      recordings.set(id, r.ok ? ((await r.json()) as Recording) : null);
+    } catch { recordings.set(id, null); }
+  }
+  return recordings.get(id) ?? null;
+}
+const sampleUnchanged = () => {
+  const smp = SAMPLES[S.sample]!;
+  return JSON.stringify(S.plan) === JSON.stringify(smp.plan) && JSON.stringify(S.scenario) === JSON.stringify(smp.scenario);
+};
+async function renderReplay() {
+  const box = $("#replaybox");
+  const smp = SAMPLES[S.sample]!;
+  const rec = S.fromSample ? await recordingFor(smp.id) : null;
+  if (!rec) { box.innerHTML = ""; return; }
+  const ok = sampleUnchanged();
+  box.innerHTML = `<button class="btn ghost" id="replay" ${ok ? "" : "disabled"}>Play a run recorded with Gemini Nano</button>
+    <p class="hint">${ok ? `No on-device model here? Watch the choices Gemini Nano made for this sample on ${esc(rec.recordedAt)}, replayed step by step.` : "Recorded runs are for the sample as it comes. Reload the sample to play one."}</p>`;
+  document.getElementById("replay")?.addEventListener("click", async () => {
+    try {
+      const run = await simulate(structuredClone(S.plan), structuredClone(S.scenario), "device", `Run ${S.runs.length + 1}: recorded Gemini Nano`, { replay: rec });
+      addRun(run);
+    } catch (e) { showError(`The recorded run could not be played: ${String(e).slice(0, 200)}`); }
+    finally { setBusy(""); }
+  });
+}
+
+function addRun(run: Run) {
+  S.runs.push(run);
+  S.shown = S.runs.length - 1;
+  S.timeS = 0;
+  S.selected = null;
+  S.fixes = null;
+  renderRuns();
+  renderResults();
+  play(true);
+}
 
 // ---- playback ----------------------------------------------------------------------------------------------------
 
@@ -396,6 +450,7 @@ function renderResults() {
   };
   el.innerHTML = `
     ${r.fireNote ? `<p class="warn">${esc(r.fireNote)}</p>` : ""}
+    ${r.recorded ? `<p class="meta">Choices recorded with ${esc(r.recorded.model)} on ${esc(r.recorded.recordedAt)} (${r.recorded.questions} questions, ${Math.round(r.recorded.modelSeconds)} s of model time) and replayed here. The fire and the crowd are simulated again in your browser.</p>` : ""}
     ${r.ai && r.ai.errors ? `<p class="warn">${r.ai.errors} questions to the AI failed, so some people used the rules instead. Last error: ${esc(r.ai.lastError)}</p>` : ""}
     <div class="tally">
       <div class="t out"><b>${f.out}</b><span>got out of ${f.total}${delta(f.out, prev?.out, true)}</span></div>
@@ -494,4 +549,20 @@ document.fonts?.ready.then(() => draw());
 deviceStatus().then((st) => { S.device = st; renderDevice(); });
 renderDevice();
 
-if (import.meta.env.DEV) (window as unknown as { __S: typeof S }).__S = S;
+if (import.meta.env.DEV) {
+  const w = window as unknown as Record<string, unknown>;
+  w.__S = S;
+  // Records a sample with the on-device model and checks that playing it back gives the same run.
+  w.__record = async (i: number, model: string): Promise<string> => {
+    const smp = SAMPLES[i]!;
+    const run = await simulate(structuredClone(smp.plan), structuredClone(smp.scenario), "device", "record");
+    const rec: Recording = {
+      schemaVersion: 1, planTitle: smp.plan.title, scenarioSeed: smp.scenario.seed, shutOpenFraction: run.shutOpenFraction, model,
+      recordedAt: new Date().toISOString().slice(0, 10), modelSeconds: Math.round((run.ai?.ms ?? 0) / 1000), questions: run.ai?.calls ?? 0, decisions: run.log ?? [], bySource: run.crowd.decisionsBySource,
+    };
+    const again = await simulate(structuredClone(smp.plan), structuredClone(smp.scenario), "device", "check", { replay: rec });
+    const sig = (r: Run) => r.crowd.agents.map((a) => `${a.outcome}:${a.timeS}:${a.decisions.length}`).join(",");
+    setBusy("");
+    return JSON.stringify({ same: sig(run) === sig(again), errors: run.ai?.errors ?? 0, bySource: run.crowd.decisionsBySource, rec });
+  };
+}

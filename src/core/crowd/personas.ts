@@ -21,6 +21,10 @@ export const PERSONAS: Record<PersonaKind, Persona> = {
     kind: "staff", label: "Staff", speedMS: 1.19, stairSpeedMS: 0.65, preMovementS: [10, 40], knowsAllExits: true,
     description: "A member of staff. Knows every door and exit, including staff-only areas, and is expected to help others out.",
   },
+  resident: {
+    kind: "resident", label: "Resident", speedMS: 1.19, stairSpeedMS: 0.6, preMovementS: [60, 240], knowsAllExits: true,
+    description: "Lives in the building and knows every door. May be asleep when the fire starts and needs time to wake and react.",
+  },
   elderly: {
     kind: "elderly", label: "Older adult", speedMS: 0.9, stairSpeedMS: 0.4, preMovementS: [40, 120], knowsAllExits: false,
     description: "An older visitor who walks slowly and is cautious on stairs. Knows only the entrance and signed exits.",

@@ -12,7 +12,8 @@ const firebaseConfig = {
   appId: "1:906698064822:web:c9512a67d85d7ff332f717",
 };
 
-const debugToken = import.meta.env.VITE_APPCHECK_DEBUG_TOKEN as string | undefined;
+// The debug token lives in .env.development.local, which Vite reads only in dev; a production build never sees it.
+const debugToken = import.meta.env.DEV ? (import.meta.env.VITE_APPCHECK_DEBUG_TOKEN as string | undefined) : undefined;
 if (debugToken) (self as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN: string }).FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
 const recaptchaKey = (import.meta.env.VITE_RECAPTCHA_ENTERPRISE_KEY as string | undefined) ?? "debug-only";
 
