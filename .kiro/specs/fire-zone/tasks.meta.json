@@ -1,0 +1,840 @@
+{
+  "pbtResults": {
+    "1.3 Write static-check and PRNG tests": {
+      "status": "passed",
+      "lastRunTimestamp": 1794943953071
+    },
+    "13.2 Write reader tests": {
+      "status": "passed",
+      "lastRunTimestamp": 1794962451869
+    },
+    "2.2 Write property tests for the validator": {
+      "status": "passed",
+      "lastRunTimestamp": 1794963581215
+    },
+    "12.2 Write reader tests": {
+      "status": "passed",
+      "lastRunTimestamp": 1794963584552
+    },
+    "3.2 Write property and unit tests for the gas modules": {
+      "status": "passed",
+      "lastRunTimestamp": 1794968584898
+    },
+    "7.2 Write property tests for species and visibility": {
+      "status": "passed",
+      "lastRunTimestamp": 1794968637949
+    },
+    "5.2 Write property and unit tests for the vent modules": {
+      "status": "passed",
+      "lastRunTimestamp": 1794968663803
+    },
+    "6.3 Write property and unit tests for heat transfer": {
+      "status": "passed",
+      "lastRunTimestamp": 1794968779011
+    },
+    "8.2 Write property and unit tests for the solver": {
+      "status": "passed",
+      "lastRunTimestamp": 1794968999090
+    },
+    "17.3 Write comparator and report tests": {
+      "status": "passed",
+      "lastRunTimestamp": 1794970001314
+    },
+    "10.4 Write run-level property tests, part B": {
+      "status": "passed",
+      "lastRunTimestamp": 1794974171628
+    },
+    "10.3 Write run-level property tests, part A": {
+      "status": "passed",
+      "lastRunTimestamp": 1794975194697
+    },
+    "10.5 Write full-run physical property tests": {
+      "status": "failed",
+      "failingExample": "P31 mass, convergence clause of Req 14.2 (tolerance clause passes). Seed -1935901467 (rerun seed -1758312681 shrinks to the same case): closed 2x2x2 m room, concrete walls, no vents, durationS 5, fire at (0.2, 0.2), CH4-like fuel Hc 15 MJ/kg, table 0 W to 2.5 s, then 1000 W from 2.525 s. Max mass error 6.525e-6 kg at RTOL 1e-4 and 1.603e-6 kg at RTOL 1e-6: it falls by a factor of 4.07, and 10 is required. Allowed tolerance 10*RTOL*m0 = 9.6e-3 kg, so the error itself is well inside the limit. P29, P30, P31 energy, P32, P33 and P34 pass.",
+      "lastRunTimestamp": 1794982008762
+    }
+  },
+  "executionHistory": {
+    "1.1 Create `types.ts`, `validate/warnings.ts` and `prng.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943188281
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943198711
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943684879
+      }
+    ],
+    "1.2 Create `constants.ts` with a source comment on every value": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943188366
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943693930
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943871349
+      }
+    ],
+    "1.3 Write static-check and PRNG tests": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943188412
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943878266
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794944462032
+      }
+    ],
+    "1.4 Create `tests/fire/arbitraries.ts` and the fast-check global configuration": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943188546
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943878325
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794944462720
+      }
+    ],
+    "2.1 Implement `validate/checks.ts` and `validate/validate.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943188597
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943878448
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794944463564
+      }
+    ],
+    "2.2 Write property tests for the validator": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943188724
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794963462669
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968498595
+      }
+    ],
+    "2.3 Write unit tests for the validator": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943188834
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794963463165
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968499110
+      }
+    ],
+    "3.1 Implement `gas/layerEquations.ts`, `gas/ambient.ts`, `gas/minVolume.ts`, `gas/layerMixing.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943188974
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943879382
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794944464391
+      }
+    ],
+    "3.2 Write property and unit tests for the gas modules": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189033
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968505863
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968831462
+      }
+    ],
+    "4.1 Implement `fire/chemistry.ts`, `fire/heatRelease.ts`, `fire/plume.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189107
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943879859
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794944465144
+      }
+    ],
+    "4.2 Write property and unit tests for the fire modules": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189158
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968505948
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968831681
+      }
+    ],
+    "5.1 Implement `vents/openFraction.ts`, `vents/wallVent.ts`, `vents/ceilingFloorVent.ts`, `vents/leakage.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189209
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794944475881
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794945527112
+      }
+    ],
+    "5.2 Write property and unit tests for the vent modules": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189275
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968506438
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968831827
+      }
+    ],
+    "6.1 Implement `heat/configFactors.ts`, `heat/solidAngle.ts`, `heat/gasAbsorptionData.ts`, `heat/gasAbsorption.ts`, `heat/radiation.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189342
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794944476368
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794945528470
+      }
+    ],
+    "6.2 Implement `heat/convection.ts` and `heat/conduction.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189400
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794944477482
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794945529258
+      }
+    ],
+    "6.3 Write property and unit tests for heat transfer": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189454
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968507091
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968832479
+      }
+    ],
+    "7.1 Implement `species/tracker.ts` and `species/visibility.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189501
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794944478207
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794945530123
+      }
+    ],
+    "7.2 Write property tests for species and visibility": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189566
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968507603
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968833439
+      }
+    ],
+    "8.1 Implement `solver/linalg.ts`, `solver/bdf.ts`, `solver/newton.ts`, `solver/jacobian.ts`, `solver/stepControl.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189623
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794944479233
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794945531022
+      }
+    ],
+    "8.2 Write property and unit tests for the solver": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189673
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968833698
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794969060033
+      }
+    ],
+    "9. Checkpoint - physics modules and solver": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189723
+      }
+    ],
+    "10.1 Implement `state.ts`, `model.ts`, `residual.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189801
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794963462276
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968497847
+      }
+    ],
+    "10.2 Implement `driver.ts`, `result.ts` and `index.ts` (`runFire`, `validateScenario`)": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189852
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794969073934
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794969883630
+      }
+    ],
+    "10.3 Write run-level property tests, part A": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189943
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794969896066
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794977429746
+      }
+    ],
+    "10.4 Write run-level property tests, part B": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943189993
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794969896204
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794977430701
+      }
+    ],
+    "10.5 Write full-run physical property tests": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190049
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794969896363
+      }
+    ],
+    "11. Checkpoint - core model complete": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190105
+      }
+    ],
+    "12.1 Implement `cfast-input/` (`tokenize.ts`, `namelist.ts`, `toScenario.ts`, `humidity.ts`, `index.ts`)": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190168
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794945540333
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794963455751
+      }
+    ],
+    "12.2 Write reader tests": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190224
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794963462349
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968498095
+      }
+    ],
+    "13.1 Implement `validation/harness/referenceCsv.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190274
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943693997
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943871431
+      }
+    ],
+    "13.2 Write reader tests": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190338
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794945540408
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794963455831
+      }
+    ],
+    "14.1 Extend `tools/cfast/run-references.sh`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190387
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943199393
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943684955
+      }
+    ],
+    "14.2 Write Reference_Script tests": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190449
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943694217
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943872194
+      }
+    ],
+    "15.1 Implement `tools/steckler/digitise.ts` and `tools/steckler/README.md`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190513
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943199962
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943685214
+      }
+    ],
+    "15.2 Write digitiser tests": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190556
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943694793
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943872751
+      }
+    ],
+    "15.3 Generate `validation/harness/published/steckler.ts` and test it": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190610
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943695428
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943873291
+      }
+    ],
+    "16.1 Implement `worker/protocol.ts`, `src/web/fire/fire.worker.ts`, `src/web/fire/fireClient.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190653
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794969896514
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794977429043
+      }
+    ],
+    "16.2 Write Worker_Wrapper tests": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190699
+      }
+    ],
+    "17.1 Implement `validation/harness/tolerances.ts` and `validation/harness/compare.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190764
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794963462405
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968498016
+      }
+    ],
+    "17.2 Implement `validation/harness/report.ts` (Report_Generator)": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190824
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794969074325
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794969883788
+      }
+    ],
+    "17.3 Write comparator and report tests": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190874
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794969896783
+      },
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794977431544
+      }
+    ],
+    "17.4 Implement `validation/cfast.validation.test.ts` (Validation_Suite)": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190927
+      }
+    ],
+    "18. Checkpoint - harness and tooling": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943190974
+      }
+    ],
+    "19.1 Implement `tests/fire/bench/fire.bench.test.ts`": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943191041
+      }
+    ],
+    "20.1 Run the Validation_Suite on all 21 cases and publish the report": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943191095
+      }
+    ],
+    "21. Final checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943191142
+      }
+    ],
+    "14. Reference_Script": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943872242
+      }
+    ],
+    "15. Steckler digitiser": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794943873332
+      }
+    ],
+    "1. Foundation: types, constants, PRNG, test infrastructure": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794944462771
+      }
+    ],
+    "13. Reference CSV reader": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794963455886
+      }
+    ],
+    "12. CFAST input reader": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968498161
+      }
+    ],
+    "2. Input_Validator": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968499177
+      }
+    ],
+    "3. Gas state modules": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968831555
+      }
+    ],
+    "4. Fire modules": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968831743
+      }
+    ],
+    "5. Vent modules": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968831921
+      }
+    ],
+    "6. Heat transfer modules": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968832551
+      }
+    ],
+    "7. Species and visibility": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794968833511
+      }
+    ],
+    "8. Implicit solver": [
+      {
+        "executionId": "b4746e7a-989c-438d-bd9f-1d8fe9de2e3d",
+        "chatSessionId": "sess_b9f5372c-eecd-4d40-8be9-cde8e7424552",
+        "timestamp": 1794969060700
+      }
+    ]
+  }
+}

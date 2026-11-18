@@ -912,7 +912,9 @@ For any table HRR, entrainment rate, oxygen mass fraction in `[0, 0.23]` and val
 
 ### Property 16: Plume entrainment ordering
 
-For any `Q̇c > 0`, plume height, fire area and fire position, the entrainment equals the free-plume value when the fire edge reaches fewer than two walls (centre and single-wall positions), and equals the corner value (factor 4 on `Q̇` and on `D²`, result divided by 4) when the edge reaches two walls, tested as the distance to each wall ≤ √(fire area)/2. The corner value is less than or equal to the free-plume value. There is no wall-fire correction (Requirement 6.10 as amended, following CFAST 7.7.7).
+For any `Q̇c > 0` with dimensionless fire size `Q* ≥ 0.2`, plume height, fire area and fire position, the entrainment equals the free-plume value when the fire edge reaches fewer than two walls (centre and single-wall positions), and equals the corner value (factor 4 on `Q̇` and on `D²`, result divided by 4) when the edge reaches two walls, tested as the distance to each wall ≤ √(fire area)/2. The corner value is less than or equal to the free-plume value. There is no wall-fire correction (Requirement 6.10 as amended, following CFAST 7.7.7).
+
+The ordering is stated only for `Q* ≥ 0.2`. For weak fires with small `Q*`, the virtual origin `z0` lies far below the floor. Doubling `D` in the corner correction then makes `z − z0` larger before the division by 4, so the corner value can exceed the free-plume value. Counterexample: `Q̇ = 10 kW`, fire area 1 m², `z = 0.1 m` gives a corner value of 0.218 kg/s against a free-plume value of 0.183 kg/s. This is a property of the correlation as CFAST 7.7.7 implements it, not a defect in the port. The property test generates `Q̇` and fire area so that `Q* ≥ 0.2`.
 
 **Validates: Requirements 6.10**
 
@@ -1020,7 +1022,7 @@ For any room, fire and vent definition, a Scenario made of two identical mirrore
 
 ### Property 34: HRR monotonicity
 
-For any single-room Scenario and any two constant HRR values `q1 < q2` with all other inputs equal, the upper layer temperature at every output time is at least that for `q1`, and is strictly greater when `q2 − q1 ≥ 0.1 · q1`.
+For any single-room steady-state Scenario, meaning constant HRR and a well-ventilated room in which oxygen does not limit burning, and any two constant HRR values `q1 < q2` with all other inputs equal, the upper layer temperature compared at the end of the run is at least that for `q1`, and is strictly greater when `q2 − q1 ≥ 0.1 · q1`. This matches Requirement 14.8. Transient values are not compared, because the layer can lag differently for the two fires.
 
 **Validates: Requirements 14.8**
 
