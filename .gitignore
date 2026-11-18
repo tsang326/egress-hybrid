@@ -10,3 +10,5 @@ dist
 
 # CFAST 7.7.7 Fortran source: local reading reference only, never committed
 docs/refs/cfast-src/
+.env.local
+.env*.local

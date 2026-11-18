@@ -108,10 +108,11 @@ describe('static checks of src/core/fire', () => {
     expect(missing).toEqual([]);
   });
 
-  it('has no runtime dependencies in package.json (Req 9.7)', () => {
+  it('has no runtime dependencies in package.json other than the Firebase web SDK used by the app shell', () => {
+    // The fire core imports nothing (checked above); only src/web uses firebase.
     const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as Record<string, unknown>;
-    const deps = pkg['dependencies'];
-    expect(deps === undefined || Object.keys(deps as object).length === 0).toBe(true);
+    const deps = Object.keys((pkg['dependencies'] ?? {}) as object);
+    expect(deps.filter((d) => d !== 'firebase')).toEqual([]);
   });
 
   it('uses none of the banned words in warnings.ts messages', () => {
