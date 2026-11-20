@@ -217,7 +217,8 @@ like these, knowing only what they know, would actually do. People usually head 
 hesitate when they are unsure, and avoid thick smoke if they can see another way. Staff tend to help customers first.
 Each group is one or more people in the same place and situation. Split each group's people across the options (the counts must
 add up to the group size; a group of 1 gets exactly one option). For each option you use, give a reason of at most 12 words,
-written about the people ("she...", "they...").`;
+written about the people with "they" (never "he" or "she": the group may be several people, and answers for one person
+can come from different calls).`;
 
 interface Group { id: number; reqs: DecisionRequest[] }
 
