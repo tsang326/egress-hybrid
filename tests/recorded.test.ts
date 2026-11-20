@@ -7,6 +7,7 @@ import { runCrowd } from "../src/core/crowd/sim";
 import { standardPolicy } from "../src/core/crowd/standardPolicy";
 import { recordingPolicy, replayPolicy, type Recording } from "../src/core/crowd/recorded";
 import type { CrowdResult } from "../src/core/crowd/types";
+import { OUTSIDE } from "../src/core/plan/types";
 
 const sig = (r: CrowdResult) => r.agents.map((a) => `${a.outcome}:${a.timeS}:${a.decisions.map((d) => d.chosen).join("/")}`).join(",");
 const house = SAMPLES.find((s) => s.id === "house")!;
@@ -35,4 +36,18 @@ test.each(["cafe", "office", "house"])("the shipped Gemini Nano recording for %s
   const r = await runCrowd(smp.plan, smp.scenario, fire, replay, { fallback: standardPolicy });
   // Questions the model left unanswered in the live run fall back to the rules again here.
   expect(r.decisionsBySource).toEqual(rec.bySource);
+  expectExitCountsAddUp(smp.plan, r);
+}, 120000);
+
+/** Everyone who got out went through exactly one exit door, once. */
+function expectExitCountsAddUp(plan: (typeof SAMPLES)[number]["plan"], r: CrowdResult) {
+  const exits = new Set(plan.doors.filter((d) => d.b === OUTSIDE || d.a === OUTSIDE).map((d) => d.id));
+  const through = r.doors.filter((d) => exits.has(d.doorId)).reduce((n, d) => n + d.passed, 0);
+  expect(through).toBe(r.agents.filter((a) => a.outcome === "out").length);
+}
+
+test.each(["cafe", "office", "house"])("exit door counts add up for %s with the rules", async (id) => {
+  const smp = SAMPLES.find((s) => s.id === id)!;
+  const fire = runFire(toFireScenario(smp.plan, smp.scenario));
+  expectExitCountsAddUp(smp.plan, await runCrowd(smp.plan, smp.scenario, fire, standardPolicy, { fallback: standardPolicy }));
 }, 120000);

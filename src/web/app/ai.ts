@@ -243,15 +243,32 @@ Options:
 ${opts}`;
 }
 
-export interface AiStats { calls: number; people: number; answered: number; errors: number; lastError: string; ms: number }
+export interface AiStats {
+  calls: number; people: number; answered: number; errors: number; lastError: string; ms: number;
+  onDevice: number; inCloud: number; handedToCloud: number; // answers by where they ran; groups Nano could not finish
+}
 
-/** Asks the model about groups of people. On the device one question runs at a time; the cloud takes several at once. */
-export function aiPolicy(where: Exclude<Where, "auto">, onCall?: (st: AiStats) => void): Policy & { stats: AiStats } {
-  const BATCH = where === "device" ? 3 : 12; // the cloud model handles long prompts; fewer, larger questions fit the rate limit
-  const PARALLEL = where === "device" ? 1 : 3;
-  const stats: AiStats = { calls: 0, people: 0, answered: 0, errors: 0, lastError: "", ms: 0 };
+export type PolicyMode = "device" | "cloud" | "hybrid";
+
+/** How long Gemini Nano gets at each decision moment before the rest goes to the cloud (hybrid mode). */
+const DEVICE_BUDGET_S = 8;
+
+/**
+ * People's choices, asked of the models in groups.
+ * - device: Gemini Nano answers everything, one question at a time. Nothing leaves the computer.
+ * - cloud: Gemini in the cloud answers everything, several questions at once.
+ * - hybrid: at each decision moment Nano takes as many groups as it can answer in about DEVICE_BUDGET_S seconds,
+ *   judged from how fast it has been so far; the cloud takes the rest at the same time, and anything Nano fails on.
+ */
+export function aiPolicy(mode: PolicyMode, onCall?: (st: AiStats) => void): Policy & { stats: AiStats } {
+  const DEVICE_BATCH = 3, CLOUD_BATCH = 12, CLOUD_PARALLEL = 3;
+  const stats: AiStats = { calls: 0, people: 0, answered: 0, errors: 0, lastError: "", ms: 0, onDevice: 0, inCloud: 0, handedToCloud: 0 };
+  let deviceSPerGroup = 2.5; // first guess, then a running average of what Nano actually takes
+  let deviceFailures = 0;
   type Reply = { groups: { group: number; split: { option: string; people: number; reason: string }[] }[] };
-  async function ask(batch: Group[], out: Decision[]) {
+
+  /** Asks one batch; returns the groups it could not answer. */
+  async function ask(where: "device" | "cloud", batch: Group[], out: Decision[]): Promise<Group[]> {
     const people = batch.reduce((n, g) => n + g.reqs.length, 0);
     let a: Answer<Reply>;
     try {
@@ -259,17 +276,19 @@ export function aiPolicy(where: Exclude<Where, "auto">, onCall?: (st: AiStats) =
     } catch (e) {
       stats.errors++;
       stats.lastError = String(e).slice(0, 200);
+      if (where === "device") deviceFailures++;
       onCall?.(stats);
-      return; // these people fall back to the rules, and the run says so
+      return batch;
     }
     stats.calls++;
     stats.people += people;
     stats.ms += a.ms;
+    if (a.source === "on_device") deviceSPerGroup = 0.6 * deviceSPerGroup + 0.4 * (a.ms / 1000 / batch.length);
+    const missed: Group[] = [];
     for (const g of batch) {
       const ans = a.value.groups.find((x) => x.group === g.id);
-      if (!ans) continue;
-      const valid = ans.split.filter((x) => g.reqs[0]!.options.some((o) => o.id === x.option) && x.people > 0);
-      if (!valid.length) continue;
+      const valid = ans ? ans.split.filter((x) => g.reqs[0]!.options.some((o) => o.id === x.option) && x.people > 0) : [];
+      if (!valid.length) { missed.push(g); continue; }
       // Scale the counts to the group size, then hand options out in order.
       const total = valid.reduce((n, x) => n + x.people, 0);
       let k = 0;
@@ -278,20 +297,45 @@ export function aiPolicy(where: Exclude<Where, "auto">, onCall?: (st: AiStats) =
         for (let m = 0; m < n && k < g.reqs.length; m++, k++) {
           out.push({ agentId: g.reqs[k]!.agentId, optionId: x.option, reason: x.reason.slice(0, 120), source: a.source === "on_device" ? "on_device" : "cloud" });
           stats.answered++;
+          if (a.source === "on_device") stats.onDevice++; else stats.inCloud++;
         }
       });
     }
     onCall?.(stats);
+    return missed;
   }
+
+  async function onDevice(groups: Group[], out: Decision[]): Promise<Group[]> {
+    const left: Group[] = [];
+    for (let i = 0; i < groups.length; i += DEVICE_BATCH) {
+      // After two failures in a row Nano is skipped for the rest of the run in hybrid mode.
+      if (mode === "hybrid" && deviceFailures >= 2) { left.push(...groups.slice(i)); break; }
+      const missed = await ask("device", groups.slice(i, i + DEVICE_BATCH), out);
+      if (missed.length < Math.min(DEVICE_BATCH, groups.length - i)) deviceFailures = 0;
+      left.push(...missed);
+    }
+    return left;
+  }
+
+  async function inCloud(groups: Group[], out: Decision[]): Promise<void> {
+    const batches: Group[][] = [];
+    for (let i = 0; i < groups.length; i += CLOUD_BATCH) batches.push(groups.slice(i, i + CLOUD_BATCH));
+    for (let i = 0; i < batches.length; i += CLOUD_PARALLEL) await Promise.all(batches.slice(i, i + CLOUD_PARALLEL).map((b) => ask("cloud", b, out)));
+  }
+
   return {
-    name: where === "device" ? "on_device" : "cloud",
+    name: mode === "device" ? "on_device" : mode === "cloud" ? "cloud" : "hybrid",
     stats,
     async decide(reqs: DecisionRequest[]): Promise<Decision[]> {
       const out: Decision[] = [];
       const groups = groupRequests(reqs);
-      const batches: Group[][] = [];
-      for (let i = 0; i < groups.length; i += BATCH) batches.push(groups.slice(i, i + BATCH));
-      for (let i = 0; i < batches.length; i += PARALLEL) await Promise.all(batches.slice(i, i + PARALLEL).map((b) => ask(b, out)));
+      if (mode === "device") { await onDevice(groups, out); return out; }
+      if (mode === "cloud") { await inCloud(groups, out); return out; }
+      const n = deviceFailures >= 2 ? 0 : Math.max(1, Math.floor(DEVICE_BUDGET_S / deviceSPerGroup));
+      const mine = groups.slice(0, n), rest = groups.slice(n);
+      stats.handedToCloud += rest.length;
+      const [missed] = await Promise.all([onDevice(mine, out), inCloud(rest, out)]);
+      if (missed.length) { stats.handedToCloud += missed.length; await inCloud(missed, out); }
       return out;
     },
   };
@@ -332,8 +376,8 @@ export function assessmentSchema(plan: Plan) {
   };
 }
 
-export async function writeAssessment(plan: Plan, facts: string): Promise<Answer<Assessment>> {
-  return askJson<Assessment>("cloud", `assess:${plan.title}:${plan.doors.length}`, assessmentSchema(plan), [
+export async function writeAssessment(where: Where, plan: Plan, facts: string): Promise<Answer<Assessment>> {
+  return askJson<Assessment>(where, `assess:${plan.title}:${plan.doors.length}`, assessmentSchema(plan), [
     `You help the person responsible for fire safety in a small building understand a simulated evacuation.
 This is a reference simulation, not a fire risk assessment, and you must not say the building is safe or compliant.
 Write: a summary of 2-3 sentences; 3-5 findings, each one sentence that points at a room, door or group of people; and 1-3 fixes

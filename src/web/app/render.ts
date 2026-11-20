@@ -29,7 +29,7 @@ export interface View {
   selected: number | null;
 }
 
-interface FloorBox { floor: number; minX: number; minY: number; maxX: number; maxY: number; ox: number }
+interface FloorBox { floor: number; minX: number; minY: number; maxX: number; maxY: number; ox: number; oy: number }
 
 export class PlanRenderer {
   private ctx: CanvasRenderingContext2D;
@@ -38,30 +38,26 @@ export class PlanRenderer {
   private oy = 0;
   private boxes: FloorBox[] = [];
   private lastAgents: { id: number; x: number; y: number }[] = [];
+  private lastDoors: { id: string; x: number; y: number; r: number }[] = [];
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext("2d")!;
   }
 
   private layout(plan: Plan) {
-    const MARGIN = 2.2, GAP = 4;
-    let ox = 0;
-    this.boxes = floorsOf(plan).map((f) => {
+    // Each floor gets a cell; cells go in the grid (1 to n columns) that draws the building biggest.
+    const MARGIN = 2, TITLE = 1.2, GAP = 0.6;
+    const raw = floorsOf(plan).map((f) => {
       const rs = plan.rooms.filter((r) => r.floor === f);
-      const b = {
+      return {
         floor: f,
         minX: Math.min(...rs.map((r) => r.x)) - MARGIN,
-        minY: Math.min(...rs.map((r) => r.y)) - MARGIN - 1.2,
+        minY: Math.min(...rs.map((r) => r.y)) - MARGIN - TITLE,
         maxX: Math.max(...rs.map((r) => r.x + r.widthM)) + MARGIN,
         maxY: Math.max(...rs.map((r) => r.y + r.depthM)) + MARGIN,
-        ox: 0,
+        ox: 0, oy: 0,
       };
-      b.ox = ox - b.minX;
-      ox += b.maxX - b.minX + GAP;
-      return b;
     });
-    const totalW = ox - GAP;
-    const totalH = Math.max(...this.boxes.map((b) => b.maxY - b.minY));
     const rect = this.canvas.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const w = Math.max(200, rect.width), h = Math.max(160, rect.height);
@@ -69,14 +65,29 @@ export class PlanRenderer {
       this.canvas.width = Math.round(w * dpr);
       this.canvas.height = Math.round(h * dpr);
     }
-    this.scale = Math.min(w / totalW, h / totalH) * dpr;
-    this.ox = (this.canvas.width - totalW * this.scale) / 2;
-    this.oy = (this.canvas.height - totalH * this.scale) / 2 - Math.min(...this.boxes.map((b) => b.minY)) * this.scale;
+    const cellW = Math.max(...raw.map((b) => b.maxX - b.minX)), cellH = Math.max(...raw.map((b) => b.maxY - b.minY));
+    const n = raw.length;
+    let best = { cols: 1, s: 0, W: 0, H: 0 };
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols);
+      const W = cols * cellW + (cols - 1) * GAP, H = rows * cellH + (rows - 1) * GAP;
+      const sc = Math.min(w / W, h / H);
+      if (sc > best.s * 1.02) best = { cols, s: sc, W, H };
+    }
+    raw.forEach((b, i) => {
+      const col = i % best.cols, row = Math.floor(i / best.cols);
+      b.ox = col * (cellW + GAP) - b.minX;
+      b.oy = row * (cellH + GAP) - b.minY;
+    });
+    this.boxes = raw;
+    this.scale = best.s * dpr;
+    this.ox = (this.canvas.width - best.W * this.scale) / 2;
+    this.oy = (this.canvas.height - best.H * this.scale) / 2;
   }
 
   private px(floor: number, x: number, y: number): [number, number] {
     const b = this.boxes.find((bb) => bb.floor === floor) ?? this.boxes[0]!;
-    return [this.ox + (x + b.ox) * this.scale, this.oy + y * this.scale];
+    return [this.ox + (x + b.ox) * this.scale, this.oy + (y + b.oy) * this.scale];
   }
 
   draw(v: View) {
@@ -92,7 +103,7 @@ export class PlanRenderer {
     ctx.font = `600 ${Math.max(11, 0.75 * s)}px "Barlow Semi Condensed", sans-serif`;
     ctx.textBaseline = "alphabetic";
     if (multi) for (const b of this.boxes) {
-      const [x, y] = this.px(b.floor, b.minX + 2.2, b.minY + 1.4);
+      const [x, y] = this.px(b.floor, b.minX + 2, b.minY + 1);
       ctx.fillText(b.floor === 0 ? "Ground floor" : `Floor ${b.floor}`, x, y);
     }
 
@@ -129,22 +140,13 @@ export class PlanRenderer {
     }
 
     // Doors
+    const doorTags: { id: string; x: number; y: number; locked: boolean }[] = [];
+    this.lastDoors = [];
     for (const d of v.plan.doors) {
       const ra = roomById(v.plan, d.a);
       if (!ra) continue;
       const state = doorState(d, v.scenario);
       if (d.stair) {
-        const [x, y] = this.px(ra.floor, d.x, d.y);
-        ctx.fillStyle = COLOURS.ink;
-        ctx.font = `600 ${Math.max(10, 0.6 * s)}px "Barlow Semi Condensed", sans-serif`;
-        ctx.textAlign = "center";
-        const other = roomById(v.plan, d.b);
-        ctx.fillText(other && other.floor > ra.floor ? "Stairs up" : "Stairs down", x, y);
-        if (other) {
-          const [x2, y2] = this.px(other.floor, d.x, d.y);
-          ctx.fillText(other.floor > ra.floor ? "Stairs down" : "Stairs up", x2, y2);
-        }
-        ctx.textAlign = "left";
         continue;
       }
       const { face } = doorFace(ra, d);
@@ -182,26 +184,63 @@ export class PlanRenderer {
         ctx.moveTo(cx - k, cy - k); ctx.lineTo(cx + k, cy + k); ctx.moveTo(cx + k, cy - k); ctx.lineTo(cx - k, cy + k);
         ctx.stroke();
       }
-      ctx.fillStyle = COLOURS.premove;
-      ctx.font = `500 ${Math.max(9, 0.5 * s)}px "Barlow Semi Condensed", sans-serif`;
-      const off = horiz ? [half + 3, -3] : [4, -half - 3];
-      ctx.fillText(d.id, cx + off[0]!, cy + off[1]!);
+      if (!d.stair) {
+        // The id sits on the wall just past the door, so it never covers the door's own state.
+        const along = half + Math.max(9, 0.45 * s);
+        doorTags.push({ id: d.id, x: horiz ? cx + along : cx, y: horiz ? cy : cy + along, locked: state === "locked" });
+        this.lastDoors.push({ id: d.id, x: cx, y: cy, r: Math.max(half, 10) });
+      }
     }
 
-    // Room names
+    // Room names: shrunk to fit, turned on their side in tall narrow rooms, left out if they still do not fit
     ctx.fillStyle = COLOURS.ink;
     for (const r of v.plan.rooms) {
       const [x, y] = this.px(r.floor, r.x, r.y);
-      const size = Math.max(10, Math.min(0.7 * s, (r.widthM * s) / Math.max(6, r.name.length * 0.62)));
-      ctx.font = `600 ${size}px "Barlow Semi Condensed", sans-serif`;
-      ctx.fillText(r.name, x + 0.4 * s, y + 0.4 * s + size);
-      if (r.staffOnly) {
-        ctx.fillStyle = COLOURS.premove;
-        ctx.font = `500 ${size * 0.8}px "Barlow Semi Condensed", sans-serif`;
-        ctx.fillText("Staff only", x + 0.4 * s, y + 0.4 * s + size * 2);
-        ctx.fillStyle = COLOURS.ink;
+      const name = r.kind === "stair" ? stairLabel(v.plan, r.id) : r.name;
+      const innerW = (r.widthM - 0.9) * s, innerH = (r.depthM - 0.9) * s;
+      const base = Math.max(10, Math.min(0.7 * s, 24));
+      ctx.font = `600 ${base}px "Barlow Semi Condensed", sans-serif`;
+      const tw = ctx.measureText(name).width;
+      const flat = Math.min(base, (base * innerW) / tw);
+      const turned = Math.min(base, (base * innerH) / tw);
+      const sub = r.staffOnly ? "Staff only" : null;
+      if (flat >= 9) {
+        ctx.font = `600 ${flat}px "Barlow Semi Condensed", sans-serif`;
+        ctx.fillText(name, x + 0.6 * s, y + 0.45 * s + flat);
+        if (sub) {
+          ctx.fillStyle = COLOURS.premove;
+          ctx.font = `500 ${flat * 0.8}px "Barlow Semi Condensed", sans-serif`;
+          ctx.fillText(sub, x + 0.6 * s, y + 0.45 * s + flat * 2);
+          ctx.fillStyle = COLOURS.ink;
+        }
+      } else if (turned >= 9 && r.depthM > r.widthM) {
+        ctx.save();
+        ctx.translate(x + 0.45 * s + turned, y + r.depthM * s - 0.6 * s);
+        ctx.rotate(-Math.PI / 2);
+        ctx.font = `600 ${turned}px "Barlow Semi Condensed", sans-serif`;
+        ctx.fillText(name, 0, 0);
+        ctx.restore();
       }
     }
+
+    // Door ids, as small tags on top of walls and room names
+    ctx.font = `600 ${Math.max(10, 0.42 * s)}px "Barlow Semi Condensed", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const t of doorTags) {
+      const w = ctx.measureText(t.id).width + 6, h = Math.max(13, 0.55 * s);
+      ctx.fillStyle = t.locked ? COLOURS.fire : "#FFFFFF";
+      ctx.strokeStyle = t.locked ? COLOURS.fire : COLOURS.premove;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(t.x - w / 2, t.y - h / 2, w, h, 3);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = t.locked ? "#FFFFFF" : COLOURS.ink;
+      ctx.fillText(t.id, t.x, t.y + 0.5);
+    }
+    ctx.textAlign = "start";
+    ctx.textBaseline = "alphabetic";
 
     // Fire
     const fr = roomById(v.plan, v.scenario.fire.room);
@@ -240,6 +279,18 @@ export class PlanRenderer {
         }
       }
     }
+  }
+
+  /** The door under a click, if any (not stairs). */
+  pickDoor(cssX: number, cssY: number): string | null {
+    const dpr = this.canvas.width / Math.max(1, this.canvas.getBoundingClientRect().width);
+    const x = cssX * dpr, y = cssY * dpr;
+    let best: string | null = null, bd = Infinity;
+    for (const d of this.lastDoors) {
+      const dist = Math.hypot(d.x - x, d.y - y);
+      if (dist < Math.max(d.r, 12 * dpr) && dist < bd) { bd = dist; best = d.id; }
+    }
+    return best;
   }
 
   /** The person nearest a click, in CSS pixels relative to the canvas. */
@@ -287,4 +338,16 @@ function drawFlame(ctx: CanvasRenderingContext2D, x: number, y: number, r: numbe
   ctx.beginPath();
   ctx.ellipse(x, y + r * 0.35, r * 0.3, r * 0.42, 0, 0, Math.PI * 2);
   ctx.fill();
+}
+
+/** "Stairs up", "Stairs down" or "Stairs up/down" for a stair room, from the stair links that touch it. */
+function stairLabel(plan: Plan, roomId: string): string {
+  const me = roomById(plan, roomId);
+  let up = false, down = false;
+  for (const d of plan.doors) {
+    if (!d.stair || (d.a !== roomId && d.b !== roomId)) continue;
+    const other = roomById(plan, d.a === roomId ? d.b : d.a);
+    if (me && other) { if (other.floor > me.floor) up = true; else if (other.floor < me.floor) down = true; }
+  }
+  return up && down ? "Stairs up/down" : up ? "Stairs up" : down ? "Stairs down" : "Stairs";
 }

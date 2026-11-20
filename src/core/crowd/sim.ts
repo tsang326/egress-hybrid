@@ -296,7 +296,16 @@ export async function runCrowd(plan: Plan, s: DrillScenario, fire: Result | null
     a.path = [...r.path]; a.goal = goal; a.state = STATE.moving;
   }
 
+  function leaveQueue(a: Agent) {
+    if (!a.queuedAt) return;
+    const dr = doors.get(a.queuedAt)!;
+    dr.queue = dr.queue.filter((x) => x !== a.id);
+    a.queuedAt = null;
+  }
+
   function apply(a: Agent, act: Action, t: number) {
+    // A new choice replaces whatever the person was doing, including waiting in a door queue.
+    leaveQueue(a);
     switch (act.kind) {
       case "go_exit":
         setPath(a, route(a, t, (d, into) => d.id === act.doorId && into === OUTSIDE) ?? route(a, t, exitTarget), { kind: "exit" });
@@ -337,7 +346,7 @@ export async function runCrowd(plan: Plan, s: DrillScenario, fire: Result | null
       a.summary.peakHeatDose = a.heatDose; a.summary.peakCoDose = a.coDose;
       if (a.heatDose >= 1 || a.coDose >= 1) {
         a.state = STATE.incapacitated; a.summary.outcome = "incapacitated"; a.summary.timeS = Math.round(t); a.summary.cause = a.heatDose >= 1 ? "heat" : "co";
-        if (a.queuedAt) { const dr = doors.get(a.queuedAt)!; dr.queue = dr.queue.filter((x) => x !== a.id); a.queuedAt = null; }
+        leaveQueue(a);
       }
     }
     // Triggers
@@ -406,6 +415,7 @@ export async function runCrowd(plan: Plan, s: DrillScenario, fire: Result | null
       while (dr.credit >= 1 && dr.queue.length) {
         dr.credit -= 1;
         const a = agents[dr.queue.shift()!]!;
+        if (a.state !== STATE.queue || a.queuedAt !== dr.d.id) { dr.credit += 1; continue; } // left the queue already
         a.queuedAt = null;
         pass(a, dr, t);
       }

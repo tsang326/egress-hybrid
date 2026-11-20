@@ -13,11 +13,11 @@ import { type DrillScenario, type PersonaKind } from "../core/plan/scenario";
 import { OUTSIDE, checkPlan, type Plan } from "../core/plan/types";
 import { applyFixes, factsText, runFacts, type Fix } from "../core/report";
 import { aiPolicy, type AiStats, parseScenario, readPlanPhoto, summariseRun, toDrill, writeAssessment, type Source } from "./app/ai";
-import { deviceStatus, prepareDevice, type DeviceStatus } from "./app/firebase";
+import { deviceStatus, prepareDevice, type DeviceStatus, type Where } from "./app/firebase";
 import { fireForDrill } from "./app/fireRun";
 import { PlanRenderer } from "./app/render";
 
-type Mode = "standard" | "device" | "cloud";
+type Mode = "standard" | "hybrid" | "device";
 
 interface Run {
   label: string;
@@ -49,7 +49,7 @@ const S = {
   selected: null as number | null,
   busy: "" as string,
   notes: [] as string[],
-  fixes: null as { summary: string; findings: string[]; fixes: Fix[] } | null,
+  fixes: null as { summary: string; findings: string[]; fixes: Fix[]; source: Source } | null,
   fromSample: true,
 };
 
@@ -73,6 +73,7 @@ document.getElementById("app")!.innerHTML = `
 </header>
 <main class="layout">
   <section class="setup" aria-label="Drill set-up">
+   <div class="setup-body">
     <div class="block">
       <h2>Building</h2>
       <div class="row">
@@ -87,17 +88,18 @@ document.getElementById("app")!.innerHTML = `
       <div class="row"><button class="btn ghost" id="parse">Fill in from this</button><span class="src" id="parsesrc"></span></div>
       <div id="scenario"></div>
     </div>
-    <div class="block">
-      <h2>How people decide</h2>
-      <div class="modes" role="radiogroup" id="modes">
-        <label><input type="radio" name="mode" value="standard" checked><span><b>Rules</b>Everyone takes the fastest exit they know.</span></label>
-        <label><input type="radio" name="mode" value="device"><span><b>AI on this device</b>Gemini Nano plays each person. Free, nothing leaves your computer.</span></label>
-        <label><input type="radio" name="mode" value="cloud"><span><b>AI in the cloud</b>Gemini plays each person. Faster on most computers.</span></label>
+   </div>
+   <div class="setup-foot">
+      <h2 id="modes-h">How people decide</h2>
+      <div class="modes" role="radiogroup" aria-labelledby="modes-h" id="modes">
+        <label><input type="radio" name="mode" value="standard" checked><span>Rules</span></label>
+        <label><input type="radio" name="mode" value="hybrid"><span>Gemini, hybrid</span></label>
+        <label><input type="radio" name="mode" value="device"><span>On this computer only</span></label>
       </div>
+      <p class="hint" id="modehint"></p>
       <button class="btn primary" id="run">Run the drill</button>
-      <div id="replaybox"></div>
       <p class="hint" id="busy" aria-live="polite"></p><p class="hint warn" id="err" role="alert"></p>
-    </div>
+   </div>
   </section>
   <section class="stage" aria-label="Plan">
     <div class="runs" id="runs"></div>
@@ -113,7 +115,7 @@ document.getElementById("app")!.innerHTML = `
       <li><i class="d guide"></i>Staff helping</li><li><i class="d shelter"></i>Sheltering</li><li><i class="d down"></i>Overcome</li><li><i class="sw smoke"></i>Smoke at head height</li>
     </ul>
   </section>
-  <section class="results" aria-label="Results" id="results"><div class="empty">Run the drill to see who gets out, where people queue and why each person did what they did.</div></section>
+  <section class="results" aria-label="Results" id="results"></section>
 </main>
 <footer class="foot">Fire and smoke: two-zone model after NIST CFAST. Tenability: ISO 13571 heat and CO doses. A drill simulation is a way to see problems, not a fire risk assessment.</footer>
 `;
@@ -154,14 +156,16 @@ function renderScenario() {
     <div class="field"><span>Fire starts in</span><select data-k="fireRoom">${roomOpts(s.fire.room)}</select></div>
     <div class="field"><span>What burns</span><select data-k="fireItem">${FIRE_ITEMS.map((f) => `<option value="${f.id}" ${f.id === s.fire.item ? "selected" : ""}>${esc(f.label)}${f.source === "measured" ? "" : " (estimate)"}</option>`).join("")}</select></div>
     <div class="field"><span>Alarm after</span><span class="inline"><input type="number" min="0" max="600" step="5" data-k="alarm" value="${s.alarmDelayS}"> s</span></div>
-    <div class="field top"><span>Doors out of use</span><div class="chips">${p.doors.filter((d) => !d.stair).map((d) => `<label class="chip ${s.lockedDoors.includes(d.id) ? "on" : ""}"><input type="checkbox" data-door="${d.id}" ${s.lockedDoors.includes(d.id) ? "checked" : ""}>${esc(d.id)} <small>${esc(roomName(p, d.a))}–${esc(roomName(p, d.b))}</small></label>`).join("")}</div></div>
-    <div class="field top"><span>People</span><div class="groups">${s.occupants.map((o, i) => `
+    <h3>Doors locked or blocked</h3>
+    <div class="chips">${p.doors.filter((d) => !d.stair).map((d) => `<label class="chip ${s.lockedDoors.includes(d.id) ? "on" : ""}" title="${esc(doorLabel(p, d.id))}"><input type="checkbox" data-door="${d.id}" ${s.lockedDoors.includes(d.id) ? "checked" : ""}>${esc(d.id)}</label>`).join("")}</div>
+    <p class="hint">${s.lockedDoors.length ? s.lockedDoors.map((id) => esc(doorLabel(p, id))).join("<br>") : "None. Click a door here or on the plan."}</p>
+    <h3>People</h3>
+    <div class="groups">${s.occupants.map((o, i) => `
       <div class="group"><input type="number" min="0" max="300" value="${o.count}" data-occ="${i}" data-f="count" aria-label="Number of people">
-      <select data-occ="${i}" data-f="kind" aria-label="Type">${kinds.map((k) => `<option value="${k.kind}" ${k.kind === o.kind ? "selected" : ""}>${esc(k.label)}</option>`).join("")}</select>
-      <span class="in">in</span><select data-occ="${i}" data-f="room" aria-label="Room">${roomOpts(o.room)}</select>
-      <button class="x" data-del="${i}" aria-label="Remove group">×</button></div>`).join("")}
-      <button class="btn ghost small" id="addocc">Add people</button></div></div>
-    <p class="hint">${s.occupants.reduce((n, o) => n + o.count, 0)} people in total.</p>`;
+      <select data-occ="${i}" data-f="kind" aria-label="Who">${kinds.map((k) => `<option value="${k.kind}" ${k.kind === o.kind ? "selected" : ""}>${esc(k.label)}</option>`).join("")}</select>
+      <select data-occ="${i}" data-f="room" aria-label="Room">${roomOpts(o.room)}</select>
+      <button class="x" data-del="${i}" aria-label="Remove group">×</button></div>`).join("")}</div>
+    <div class="row"><button class="btn ghost small" id="addocc">Add people</button><span class="hint">${s.occupants.reduce((n, o) => n + o.count, 0)} people in total.</span></div>`;
 }
 
 $("#scenario").addEventListener("change", (e) => {
@@ -178,14 +182,13 @@ $("#scenario").addEventListener("change", (e) => {
     if (t.dataset.f === "room") o.room = t.value;
   }
   renderScenario();
-  renderReplay();
-  if (!current()) draw();
+  if (!current()) { renderResults(); draw(); }
 });
 $("#scenario").addEventListener("click", (e) => {
   const t = e.target as HTMLElement;
   if (t.id === "addocc") { S.scenario.occupants.push({ room: S.plan.rooms[0]!.id, count: 5, kind: "customer" }); renderScenario(); }
   if (t.dataset.del !== undefined) { S.scenario.occupants.splice(Number(t.dataset.del), 1); renderScenario(); }
-  if (t.id === "addocc" || t.dataset.del !== undefined) renderReplay();
+  if ((t.id === "addocc" || t.dataset.del !== undefined) && !current()) renderResults();
 });
 
 function loadPlan(plan: Plan, scenario: DrillScenario, notes: string[] = [], fromSample = true) {
@@ -202,7 +205,6 @@ function loadPlan(plan: Plan, scenario: DrillScenario, notes: string[] = [], fro
   renderScenario();
   renderRuns();
   renderResults();
-  renderReplay();
   draw();
 }
 
@@ -220,7 +222,11 @@ function setBusy(text: string) {
   for (const id of ["#run", "#parse"]) $<HTMLButtonElement>(id).disabled = !!text;
 }
 
-const aiWhere = (): "device" | "cloud" => (S.device === "available" ? "device" : "cloud");
+/** Where the smaller AI tasks run: only on the device when the user asked for that, otherwise the device when it has
+ *  Gemini Nano (Firebase AI Logic falls back to the cloud by itself), otherwise the cloud. */
+const aiWhere = (): Where => (S.mode === "device" ? "device" : S.device === "available" ? "auto" : "cloud");
+/** The plan photo and the fix suggestions need the bigger cloud model unless the user keeps everything local. */
+const heavyWhere = (): Where => (S.mode === "device" ? "device" : "cloud");
 
 $("#parse").addEventListener("click", async () => {
   const text = $<HTMLTextAreaElement>("#story").value.trim();
@@ -243,7 +249,8 @@ $<HTMLInputElement>("#photo").addEventListener("change", async (e) => {
   setBusy("Reading the plan photo…");
   try {
     const base64 = await new Promise<string>((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]!); fr.onerror = rej; fr.readAsDataURL(f); });
-    const a = await readPlanPhoto("cloud", { mimeType: f.type || "image/png", base64 });
+    const where = heavyWhere();
+    const a = await readPlanPhoto(where, { mimeType: f.type || "image/png", base64 });
     const v = a.value;
     const { plan, notes } = planFromRough(v.title,
       v.rooms.map((r) => ({ id: r.id, name: r.name, floor: r.floor, x: r.x, y: r.y, widthM: r.width_m, depthM: r.depth_m, kind: r.kind, staffOnly: r.staff_only })),
@@ -254,13 +261,24 @@ $<HTMLInputElement>("#photo").addEventListener("change", async (e) => {
     loadPlan(plan, {
       fire: { room: staffRoom.id, item: "trash_bin" }, lockedDoors: [], occupants: [{ room: biggest.id, count: 20, kind: "customer" }, { room: staffRoom.id, count: 2, kind: "staff" }],
       alarmDelayS: 30, durationS: 600, seed: 7,
-    }, [`Read from the photo in the cloud in ${(a.ms / 1000).toFixed(1)} s. Check the rooms and exits before you trust a run.`, ...notes], false);
+    }, [`Read from the photo ${a.source === "on_device" ? "by Gemini Nano on this computer (it often gets doors wrong; check them)" : "in the cloud"} in ${(a.ms / 1000).toFixed(1)} s. Check the rooms and exits before you trust a run.`, ...notes], false);
   } catch (err) {
     S.notes = [`Could not read the photo: ${String(err).slice(0, 180)}`];
     renderPlanHint();
   } finally { setBusy(""); (e.target as HTMLInputElement).value = ""; }
 });
 
+function renderMode() {
+  const nano = S.device === "available";
+  const hint: Record<Mode, string> = {
+    standard: "Everyone takes the fastest exit they know about. Instant, no AI.",
+    hybrid: nano
+      ? "Each person is played by Gemini. Gemini Nano on this computer answers what it can in a few seconds; Gemini in the cloud takes the rest."
+      : "Each person is played by Gemini in the cloud. With Gemini Nano on this computer, it would answer first.",
+    device: "Gemini Nano plays everyone on this computer. Nothing leaves it, and it is slower.",
+  };
+  $("#modehint").textContent = hint[S.mode];
+}
 for (const r of document.querySelectorAll<HTMLInputElement>('input[name="mode"]')) r.addEventListener("change", () => { S.mode = r.value as Mode; renderDevice(); });
 
 // ---- on-device model ---------------------------------------------------------------------------------------------
@@ -278,7 +296,9 @@ function renderDevice() {
   el.innerHTML = `<span class="dot ${st === "available" ? "ok" : st === "unavailable" || st === "no-api" ? "off" : "wait"}"></span>${text[st]}${st === "downloadable" ? ' <button class="btn ghost small" id="dl">Download (about 2 GB)</button>' : ""}`;
   const dev = document.querySelector<HTMLInputElement>('input[value="device"]')!;
   dev.disabled = st !== "available";
-  if (dev.disabled && S.mode === "device") { S.mode = "cloud"; document.querySelector<HTMLInputElement>('input[value="cloud"]')!.checked = true; }
+  dev.closest("label")!.title = dev.disabled ? "Needs Gemini Nano on this computer (desktop Chrome)." : "";
+  if (dev.disabled && S.mode === "device") { S.mode = "hybrid"; document.querySelector<HTMLInputElement>('input[value="hybrid"]')!.checked = true; }
+  renderMode();
   document.getElementById("dl")?.addEventListener("click", async () => {
     S.device = "downloading"; renderDevice();
     try { await prepareDevice((p) => { $("#device").lastChild!.textContent = ` ${Math.round(p * 100)} %`; }); } catch { /* status below says what happened */ }
@@ -297,7 +317,8 @@ async function simulate(plan: Plan, scenario: DrillScenario, mode: Mode, label: 
   let rec: (Policy & { log: RecordedDecision[] }) | null = null;
   if (opts.replay) policy = replayPolicy(opts.replay);
   else if (mode !== "standard") {
-    const p = aiPolicy(mode, (st) => setBusy(`People are deciding what to do… ${st.answered} choices made by ${mode === "device" ? "Gemini Nano" : "Gemini"}${st.errors ? `, ${st.errors} questions failed` : ""}`));
+    const policyMode = mode === "hybrid" && S.device !== "available" ? "cloud" : mode;
+    const p = aiPolicy(policyMode, (st) => setBusy(`People are deciding what to do… ${st.onDevice} choices by Gemini Nano on this computer, ${st.inCloud} by Gemini in the cloud${st.errors ? `, ${st.errors} questions failed` : ""}`));
     ai = p.stats;
     rec = recordingPolicy(p);
     policy = rec;
@@ -310,7 +331,7 @@ async function simulate(plan: Plan, scenario: DrillScenario, mode: Mode, label: 
   };
 }
 
-const MAX_AI: Record<Mode, number> = { standard: 0, device: 160, cloud: 400 };
+const MAX_AI: Record<Mode, number> = { standard: 0, device: 160, hybrid: 400 };
 
 $("#run").addEventListener("click", async () => {
   try {
@@ -341,16 +362,18 @@ const sampleUnchanged = () => {
   return JSON.stringify(S.plan) === JSON.stringify(smp.plan) && JSON.stringify(S.scenario) === JSON.stringify(smp.scenario);
 };
 async function renderReplay() {
-  const box = $("#replaybox");
+  const box = document.getElementById("replaybox");
+  if (!box) return;
   const smp = SAMPLES[S.sample]!;
   const rec = S.fromSample ? await recordingFor(smp.id) : null;
   if (!rec) { box.innerHTML = ""; return; }
   const ok = sampleUnchanged();
-  box.innerHTML = `<button class="btn ghost" id="replay" ${ok ? "" : "disabled"}>Play a run recorded with Gemini Nano</button>
-    <p class="hint">${ok ? `No on-device model here? Watch the choices Gemini Nano made for this sample on ${esc(rec.recordedAt)}, replayed step by step.` : "Recorded runs are for the sample as it comes. Reload the sample to play one."}</p>`;
+  box.innerHTML = `<h3>No Gemini Nano here?</h3>
+    <p class="hint">${ok ? `Play the run Gemini Nano made for this sample on a laptop on ${esc(rec.recordedAt)}. Its choices are replayed; the fire and the crowd are simulated again in your browser.` : "The recorded run is for the sample as it comes. Pick the sample again to play it."}</p>
+    <button class="btn ghost" id="replay" ${ok ? "" : "disabled"}>Play the recorded Gemini Nano run</button>`;
   document.getElementById("replay")?.addEventListener("click", async () => {
     try {
-      const run = await simulate(structuredClone(S.plan), structuredClone(S.scenario), "device", `Run ${S.runs.length + 1}: recorded Gemini Nano`, { replay: rec });
+      const run = await simulate(structuredClone(S.plan), structuredClone(S.scenario), "device", `Run ${S.runs.length + 1}`, { replay: rec });
       addRun(run);
     } catch (e) { showError(`The recorded run could not be played: ${String(e).slice(0, 200)}`); }
     finally { setBusy(""); }
@@ -366,6 +389,8 @@ function addRun(run: Run) {
   renderRuns();
   renderResults();
   play(true);
+  // On a phone the plan is below the set-up, so bring it into view.
+  if (matchMedia("(max-width: 760px)").matches) $(".stage").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 // ---- playback ----------------------------------------------------------------------------------------------------
@@ -398,12 +423,40 @@ $<HTMLInputElement>("#time").addEventListener("input", (e) => { S.timeS = Number
 $<HTMLSelectElement>("#speed").addEventListener("change", (e) => { S.speed = Number((e.target as HTMLSelectElement).value); });
 $<HTMLCanvasElement>("#plan").addEventListener("click", (e) => {
   const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
-  S.selected = renderer.pick(e.clientX - rect.left, e.clientY - rect.top);
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  const person = renderer.pick(x, y);
+  const door = person === null ? renderer.pickDoor(x, y) : null;
+  if (door) {
+    const s = S.scenario;
+    s.lockedDoors = s.lockedDoors.includes(door) ? s.lockedDoors.filter((d) => d !== door) : [...s.lockedDoors, door];
+    renderScenario();
+    if (current()) setBusy(`${doorLabel(S.plan, door)} is ${s.lockedDoors.includes(door) ? "now locked" : "open again"} for the next run.`);
+    else { renderResults(); draw(); }
+    return;
+  }
+  S.selected = person;
   draw();
   renderResults();
   if (S.selected !== null) document.getElementById(`p${S.selected}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 });
 new ResizeObserver(() => draw()).observe($(".canvaswrap"));
+
+function introHtml() {
+  const smp = S.fromSample ? SAMPLES[S.sample] : null;
+  const n = S.scenario.occupants.reduce((k, o) => k + o.count, 0);
+  return `<div class="intro">
+    <h2>${esc(S.plan.title)}</h2>
+    ${smp ? `<p class="lede">${esc(smp.blurb)}</p>` : ""}
+    <p>${n} people inside. Run the drill to see who gets out, how long it takes, where people queue, and why each person did what they did.</p>
+    <h3>Things to try</h3>
+    <ul>
+      <li>Lock a door by clicking it on the plan, then run again and compare.</li>
+      <li>Switch to an AI mode: each person is played by Gemini, with their own reasons.</li>
+      <li>After a run, ask Gemini to suggest fixes and test them in one click.</li>
+    </ul>
+    <div id="replaybox"></div>
+  </div>`;
+}
 
 // ---- results -----------------------------------------------------------------------------------------------------
 
@@ -428,7 +481,7 @@ $("#runs").addEventListener("click", (e) => {
 function renderResults() {
   const r = current();
   const el = $("#results");
-  if (!r) { el.innerHTML = `<div class="empty">Run the drill to see who gets out, where people queue and why each person did what they did.</div>`; return; }
+  if (!r) { el.innerHTML = introHtml(); renderReplay(); return; }
   const f = runFacts(r.plan, r.fire, r.crowd);
   $<HTMLInputElement>("#time").max = String(Math.ceil(Math.min(r.crowd.endTimeS, r.scenario.durationS)));
   const bySrc = Object.entries(r.crowd.decisionsBySource).filter(([, n]) => n > 0).map(([k, n]) => `${badge(k)} ${n}`).join(" ");
@@ -448,7 +501,14 @@ function renderResults() {
     const better = goodUp ? now > before : now < before;
     return ` <small class="${better ? "good" : "bad"}">${now > before ? "+" : ""}${now - before} vs ${esc(S.runs[S.shown - 1]!.label)}</small>`;
   };
+  const src = r.crowd.decisionsBySource;
+  const how = r.recorded ? "People played by Gemini Nano, recorded on a laptop"
+    : r.mode === "standard" ? "People follow the rules"
+    : r.mode === "device" ? "People played by Gemini Nano on this computer"
+    : `People played by Gemini: ${src.on_device} choices on this computer, ${src.cloud} in the cloud`;
   el.innerHTML = `
+    <h2>${esc(r.label)}</h2>
+    <p class="meta runhow">${how}</p>
     ${r.fireNote ? `<p class="warn">${esc(r.fireNote)}</p>` : ""}
     ${r.recorded ? `<p class="meta">Choices recorded with ${esc(r.recorded.model)} on ${esc(r.recorded.recordedAt)} (${r.recorded.questions} questions, ${Math.round(r.recorded.modelSeconds)} s of model time) and replayed here. The fire and the crowd are simulated again in your browser.</p>` : ""}
     ${r.ai && r.ai.errors ? `<p class="warn">${r.ai.errors} questions to the AI failed, so some people used the rules instead. Last error: ${esc(r.ai.lastError)}</p>` : ""}
@@ -512,7 +572,7 @@ async function explain() {
 function renderFixes() {
   if (!S.fixes) return "";
   const fx = S.fixes;
-  return `<div class="assess">${badge("cloud")}<p>${esc(fx.summary)}</p><ul>${fx.findings.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+  return `<div class="assess">${badge(fx.source)}<p>${esc(fx.summary)}</p><ul>${fx.findings.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
     ${fx.fixes.length ? `<h4>Suggested changes</h4><ul class="fixlist">${fx.fixes.map((x) => `<li><b>${esc(fixLabel(x))}</b> ${esc(x.why)}</li>`).join("")}</ul><button class="btn primary" id="tryfix">Re-run with these changes</button>` : ""}</div>`;
 }
 const fixLabel = (x: Fix) => ({ unlock: `Unlock ${x.door_id}`, keep_open: `Keep ${x.door_id} open`, add_exit_sign: `Lit exit sign on ${x.door_id}`, widen: `Widen ${x.door_id}` })[x.change];
@@ -522,8 +582,8 @@ async function assess() {
   if (!r) return;
   setBusy("Looking for changes that would help…");
   try {
-    const a = await writeAssessment(r.plan, factsText(r.plan, r.scenario, r.fire, r.crowd));
-    S.fixes = a.value;
+    const a = await writeAssessment(heavyWhere(), r.plan, factsText(r.plan, r.scenario, r.fire, r.crowd));
+    S.fixes = { ...a.value, source: a.source };
   } catch (e) { showError(`Could not suggest fixes: ${String(e).slice(0, 200)}`); }
   finally { setBusy(""); renderResults(); }
 }
