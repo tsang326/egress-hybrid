@@ -33,6 +33,8 @@ interface Run {
   log: RecordedDecision[] | null; // the AI's answers, so a run can be saved and played back
   recorded: { model: string; recordedAt: string; questions: number; modelSeconds: number } | null;
   summary?: { text: string; source: Source };
+  compareTo?: number; // the run this one is compared with (the run a fix was tested against)
+  fixedBy?: { changes: string[]; why: string[]; source: Source };
 }
 
 const S = {
@@ -441,6 +443,23 @@ $<HTMLCanvasElement>("#plan").addEventListener("click", (e) => {
 });
 new ResizeObserver(() => draw()).observe($(".canvaswrap"));
 
+/** Before/after table: the numbers that say whether a change helped. */
+function compareTable(a: Run, fa: ReturnType<typeof runFacts>, b: Run, fb: ReturnType<typeof runFacts>) {
+  const q = (r: Run) => Math.max(0, ...r.crowd.doors.map((d) => d.maxQueue));
+  const rows: [string, number | null, number | null, boolean, (v: number | null) => string][] = [
+    ["Got out", fa.out, fb.out, true, (v) => String(v)],
+    ["Overcome", fa.incapacitated, fb.incapacitated, false, (v) => String(v)],
+    ["Only got out through smoke", fa.outThroughSmoke, fb.outThroughSmoke, false, (v) => String(v)],
+    ["Hottest air on the way out", fa.worstTempOutC, fb.worstTempOutC, false, (v) => (v === null ? "–" : `${v} °C`)],
+    ["Last one out", fa.lastOutS, fb.lastOutS, false, (v) => (v === null ? "–" : fmtS(v))],
+    ["Longest queue at a door", q(a), q(b), false, (v) => String(v)],
+  ];
+  const cls = (x: number | null, y: number | null, up: boolean) => (x === null || y === null || x === y ? "" : (up ? y > x : y < x) ? "good" : "bad");
+  return `<table class="compare"><thead><tr><th></th><th>${esc(a.label.split(":")[0]!)}</th><th>This run</th></tr></thead><tbody>
+    ${rows.map(([name, x, y, up, fmt]) => `<tr><td>${name}</td><td>${fmt(x)}</td><td class="${cls(x, y, up)}">${fmt(y)}</td></tr>`).join("")}
+  </tbody></table>`;
+}
+
 function introHtml() {
   const smp = S.fromSample ? SAMPLES[S.sample] : null;
   const n = S.scenario.occupants.reduce((k, o) => k + o.count, 0);
@@ -492,14 +511,16 @@ function renderResults() {
     return rank[a.outcome] - rank[b.outcome] || (b.timeS ?? 0) - (a.timeS ?? 0);
   });
   const outcome = (a: (typeof people)[number]) =>
-    a.outcome === "out" ? `Out by ${a.exitDoor} at ${fmtS(a.timeS!)}` :
+    a.outcome === "out" ? `Out by ${a.exitDoor} at ${fmtS(a.timeS!)}${a.smokeS >= 1 ? `, through thick smoke or heat for ${Math.round(a.smokeS)} s (up to ${a.worstTempC} °C)` : ""}` :
     a.outcome === "incapacitated" ? `Overcome by ${a.cause === "co" ? "carbon monoxide" : "heat"} at ${fmtS(a.timeS!)}` :
     a.outcome === "sheltering" ? "Sheltering when the run ended" : "Still inside when the run ended";
-  const prev = S.shown > 0 ? runFacts(S.runs[S.shown - 1]!.plan, S.runs[S.shown - 1]!.fire, S.runs[S.shown - 1]!.crowd) : null;
+  const prevIdx = r.compareTo ?? (S.shown > 0 ? S.shown - 1 : null);
+  const prevRun = prevIdx !== null ? S.runs[prevIdx] : undefined;
+  const prev = prevRun ? runFacts(prevRun.plan, prevRun.fire, prevRun.crowd) : null;
   const delta = (now: number, before: number | undefined, goodUp: boolean) => {
     if (before === undefined || before === now) return "";
     const better = goodUp ? now > before : now < before;
-    return ` <small class="${better ? "good" : "bad"}">${now > before ? "+" : ""}${now - before} vs ${esc(S.runs[S.shown - 1]!.label)}</small>`;
+    return ` <small class="${better ? "good" : "bad"}">${now > before ? "+" : ""}${now - before}</small>`;
   };
   const src = r.crowd.decisionsBySource;
   const how = r.recorded ? "People played by Gemini Nano, recorded on a laptop"
@@ -509,16 +530,18 @@ function renderResults() {
   el.innerHTML = `
     <h2>${esc(r.label)}</h2>
     <p class="meta runhow">${how}</p>
+    ${r.fixedBy ? `<div class="fixedby">${badge(r.fixedBy.source)} <b>Changes suggested by Gemini:</b> ${esc(r.fixedBy.changes.join(", "))}<ul>${r.fixedBy.why.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
     ${r.fireNote ? `<p class="warn">${esc(r.fireNote)}</p>` : ""}
     ${r.recorded ? `<p class="meta">Choices recorded with ${esc(r.recorded.model)} on ${esc(r.recorded.recordedAt)} (${r.recorded.questions} questions, ${Math.round(r.recorded.modelSeconds)} s of model time) and replayed here. The fire and the crowd are simulated again in your browser.</p>` : ""}
     ${r.ai && r.ai.errors ? `<p class="warn">${r.ai.errors} questions to the AI failed, so some people used the rules instead. Last error: ${esc(r.ai.lastError)}</p>` : ""}
     <div class="tally">
-      <div class="t out"><b>${f.out}</b><span>got out of ${f.total}${delta(f.out, prev?.out, true)}</span></div>
+      <div class="t out"><b>${f.out}</b><span>got out of ${f.total}${delta(f.out, prev?.out, true)}</span>${f.outThroughSmoke ? `<span class="smoky">${f.outThroughSmoke} only through smoke${delta(f.outThroughSmoke, prev?.outThroughSmoke, false)}</span>` : prev?.outThroughSmoke ? `<span class="smoky ok">none through smoke${delta(0, prev.outThroughSmoke, false)}</span>` : ""}</div>
       <div class="t down"><b>${f.incapacitated}</b><span>overcome${delta(f.incapacitated, prev?.incapacitated, false)}</span></div>
       <div class="t shelter"><b>${f.sheltering + f.inside}</b><span>still inside</span></div>
       <div class="t time"><b>${f.lastOutS !== null ? fmtS(f.lastOutS) : "–"}</b><span>last one out</span></div>
     </div>
     <p class="meta">${esc(fireItem(r.scenario.fire.item).label)} in ${esc(roomName(r.plan, r.scenario.fire.room))}, alarm at ${r.scenario.alarmDelayS} s${r.scenario.lockedDoors.length ? `, out of use: ${r.scenario.lockedDoors.map(esc).join(", ")}` : ""}. Decisions: ${bySrc}${r.ai && r.ai.calls ? ` <span class="nowrap">(${r.ai.calls} questions, ${(r.ai.ms / 1000).toFixed(0)} s of model time)</span>` : ""}</p>
+    ${prevRun && prev ? compareTable(prevRun, prev, r, f) : ""}
     <div class="ai">
       ${r.summary ? `<div class="summary">${badge(r.summary.source)}${mdBullets(r.summary.text)}</div>` : `<button class="btn ghost" id="summ">Explain this run</button>`}
       <button class="btn ghost" id="assess">Suggest fixes and test them</button>
@@ -575,7 +598,7 @@ function renderFixes() {
   return `<div class="assess">${badge(fx.source)}<p>${esc(fx.summary)}</p><ul>${fx.findings.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
     ${fx.fixes.length ? `<h4>Suggested changes</h4><ul class="fixlist">${fx.fixes.map((x) => `<li><b>${esc(fixLabel(x))}</b> ${esc(x.why)}</li>`).join("")}</ul><button class="btn primary" id="tryfix">Re-run with these changes</button>` : ""}</div>`;
 }
-const fixLabel = (x: Fix) => ({ unlock: `Unlock ${x.door_id}`, keep_open: `Keep ${x.door_id} open`, add_exit_sign: `Lit exit sign on ${x.door_id}`, widen: `Widen ${x.door_id}` })[x.change];
+const fixLabel = (x: Fix) => ({ unlock: `Unlock ${x.door_id}`, keep_open: `Keep ${x.door_id} open`, keep_closed: `Door closer on ${x.door_id}`, add_exit_sign: `Lit exit sign on ${x.door_id}`, widen: `Widen ${x.door_id}` })[x.change];
 
 async function assess() {
   const r = current();
@@ -591,15 +614,22 @@ async function assess() {
 async function tryFixes() {
   const r = current();
   if (!r || !S.fixes) return;
-  const { plan, scenario, applied } = applyFixes(r.plan, r.scenario, S.fixes.fixes);
+  const fx = S.fixes;
+  const base = S.shown;
+  const { plan, scenario, applied } = applyFixes(r.plan, r.scenario, fx.fixes);
   try {
-    const run = await simulate(plan, scenario, r.mode, `Run ${S.runs.length + 1}: ${applied.join(", ")}`);
-    S.runs.push(run);
-    S.shown = S.runs.length - 1;
-    S.timeS = 0;
-    S.fixes = null;
-    renderRuns(); renderResults(); play(true);
-  } finally { setBusy(""); }
+    // A recorded run cannot be replayed with different doors, so a fix is tested with live AI instead.
+    const run = await simulate(plan, scenario, r.recorded ? "hybrid" : r.mode, `Run ${S.runs.length + 1}: ${applied.join(", ")}`);
+    run.compareTo = base;
+    run.fixedBy = { changes: applied, why: fx.fixes.map((x) => x.why), source: fx.source };
+    // The changes become the new set-up, so the next run builds on them.
+    S.plan = structuredClone(plan);
+    S.scenario = structuredClone(scenario);
+    renderPlanHint();
+    renderScenario();
+    addRun(run);
+  } catch (e) { showError(`Could not test the changes: ${String(e).slice(0, 200)}`); }
+  finally { setBusy(""); }
 }
 
 // ---- start -------------------------------------------------------------------------------------------------------

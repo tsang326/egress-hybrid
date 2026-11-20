@@ -113,7 +113,7 @@ export async function runCrowd(plan: Plan, s: DrillScenario, fire: Result | null
         state: STATE.premove, preMoveEnd: s.alarmDelayS + lo + rng() * (hi - lo),
         path: [], goal: null, busyUntil: 0, busyKind: null, transitDoor: null, transitUntil: 0,
         known, knownLocked: new Set(), heatDose: 0, coDose: 0, asked: new Set(), lastShelterAsk: -1e9, pending: false, queuedAt: null,
-        summary: { id, name, persona: g.kind, startRoom: room.name, outcome: "inside", timeS: null, exitDoor: null, peakHeatDose: 0, peakCoDose: 0, cause: null, decisions: [] },
+        summary: { id, name, persona: g.kind, startRoom: room.name, outcome: "inside", timeS: null, exitDoor: null, peakHeatDose: 0, peakCoDose: 0, cause: null, smokeS: 0, worstTempC: 20, worstVisM: 30, worstRoom: null, decisions: [] },
       });
     }
   }
@@ -339,8 +339,13 @@ export async function runCrowd(plan: Plan, s: DrillScenario, fire: Result | null
   while (t <= s.durationS) {
     // Doses
     for (const a of agents) {
-      if (!active(a) || a.state === STATE.transit) continue;
+      if (!active(a)) continue;
       const e = hazard.at(a.room, t);
+      // What each person goes through, kept even when the doses stay below the limits (stairs included).
+      if (e.visibilityM < 3 || e.tempC >= 60) a.summary.smokeS += DT;
+      if (Math.round(e.tempC) > a.summary.worstTempC) { a.summary.worstTempC = Math.round(e.tempC); a.summary.worstRoom = a.room; }
+      a.summary.worstVisM = Math.min(a.summary.worstVisM, Math.round(e.visibilityM * 10) / 10);
+      if (a.state === STATE.transit) continue;
       a.heatDose += heatDosePerS(e.tempC) * DT;
       a.coDose += coDosePerS(e.coPpm) * DT;
       a.summary.peakHeatDose = a.heatDose; a.summary.peakCoDose = a.coDose;

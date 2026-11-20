@@ -7,7 +7,7 @@ import { fireItem } from "./plan/fireItems";
 import type { DrillScenario } from "./plan/scenario";
 import { OUTSIDE, type Plan } from "./plan/types";
 
-export interface Fix { door_id: string; change: "unlock" | "keep_open" | "add_exit_sign" | "widen"; why: string }
+export interface Fix { door_id: string; change: "unlock" | "keep_open" | "keep_closed" | "add_exit_sign" | "widen"; why: string }
 
 export interface RunFacts {
   total: number;
@@ -18,12 +18,16 @@ export interface RunFacts {
   lastOutS: number | null;
   medianOutS: number | null;
   smokeLoggedS: { roomId: string; name: string; timeS: number }[]; // first time thick smoke at head height
+  outThroughSmoke: number; // got out, but only through thick smoke or 60 °C+ at head height
+  worstTempOutC: number | null; // hottest air any of them walked through
+  worstVisOutM: number | null;
 }
 
 export function runFacts(plan: Plan, fire: Result | null, crowd: CrowdResult): RunFacts {
   const n = (o: string) => crowd.agents.filter((a) => a.outcome === o).length;
   const outs = crowd.agents.filter((a) => a.outcome === "out").map((a) => a.timeS!).sort((a, b) => a - b);
   const hz = new HazardField(fire);
+  const smoky = crowd.agents.filter((a) => a.outcome === "out" && a.smokeS >= 1);
   const smokeLoggedS: RunFacts["smokeLoggedS"] = [];
   if (fire) for (const r of plan.rooms) {
     for (let t = 0; t <= (fire.timesS[fire.timesS.length - 1] ?? 0); t += 5) {
@@ -34,6 +38,9 @@ export function runFacts(plan: Plan, fire: Result | null, crowd: CrowdResult): R
     total: crowd.agents.length, out: n("out"), incapacitated: n("incapacitated"), sheltering: n("sheltering"), inside: n("inside"),
     lastOutS: outs.length ? outs[outs.length - 1]! : null, medianOutS: outs.length ? outs[Math.floor(outs.length / 2)]! : null,
     smokeLoggedS: smokeLoggedS.sort((a, b) => a.timeS - b.timeS),
+    outThroughSmoke: smoky.length,
+    worstTempOutC: smoky.length ? Math.max(...smoky.map((a) => a.worstTempC)) : null,
+    worstVisOutM: smoky.length ? Math.min(...smoky.map((a) => a.worstVisM)) : null,
   };
 }
 
@@ -45,6 +52,13 @@ export function factsText(plan: Plan, s: DrillScenario, fire: Result | null, cro
   lines.push(`Fire: ${item.label} in ${name(s.fire.room)}, peak ${item.peakKW} kW (${item.source === "measured" ? "measured curve" : "design estimate"}). Alarm after ${s.alarmDelayS} s.`);
   if (s.lockedDoors.length) lines.push(`Doors that could not be used: ${s.lockedDoors.map((d) => { const dd = plan.doors.find((x) => x.id === d); return dd ? `${d} (${name(dd.a)} to ${name(dd.b)})` : d; }).join(", ")}.`);
   lines.push(`People: ${f.total}. Got out: ${f.out}. Overcome by heat or smoke: ${f.incapacitated}. Still sheltering in a room: ${f.sheltering}. Still inside, moving: ${f.inside}.`);
+  if (f.outThroughSmoke) {
+    const smoky = crowd.agents.filter((a) => a.outcome === "out" && a.smokeS >= 1);
+    const where = [...new Set(smoky.map((a) => a.worstRoom).filter((x): x is string => !!x))].map(name);
+    lines.push(`Of those who got out, ${f.outThroughSmoke} could only do it by going through thick smoke or hot air at head height (up to ${f.worstTempOutC} °C, visibility down to ${f.worstVisOutM} m; hottest in ${where.join(", ")}). They survived in the model, but this is the situation fire safety rules try to prevent.`);
+  }
+  const fireDoors = plan.doors.filter((d) => d.a === s.fire.room || d.b === s.fire.room);
+  if (fireDoors.length) lines.push(`Doors of the fire room: ${fireDoors.map((d) => `${d.id} to ${name(d.a === s.fire.room ? d.b : d.a)} (${s.lockedDoors.includes(d.id) ? "locked" : (s.closedDoors ?? []).includes(d.id) ? "shut" : d.state === "open" ? "open" : d.state === "locked" ? "locked" : "shut"})`).join(", ")}.`);
   if (f.lastOutS !== null) lines.push(`Half of those who got out were out by ${f.medianOutS} s; the last one at ${f.lastOutS} s.`);
   if (f.smokeLoggedS.length) lines.push(`Thick smoke at head height: ${f.smokeLoggedS.map((x) => `${x.name} from ${x.timeS} s`).join(", ")}.`);
   const used = crowd.doors.filter((d) => d.passed > 0).sort((a, b) => b.passed - a.passed);
@@ -70,6 +84,7 @@ export function applyFixes(plan: Plan, s: DrillScenario, fixes: Fix[]): { plan: 
     if (!d) continue;
     if (fx.change === "unlock") { sc.lockedDoors = sc.lockedDoors.filter((x) => x !== d.id); if (d.state === "locked") d.state = "closed"; applied.push(`Unlock ${d.id}`); }
     if (fx.change === "keep_open") { sc.lockedDoors = sc.lockedDoors.filter((x) => x !== d.id); sc.closedDoors = (sc.closedDoors ?? []).filter((x) => x !== d.id); d.state = "open"; applied.push(`Keep ${d.id} open`); }
+    if (fx.change === "keep_closed") { sc.closedDoors = [...new Set([...(sc.closedDoors ?? []), d.id])]; if (d.state === "open") d.state = "closed"; applied.push(`Door closer on ${d.id}`); }
     if (fx.change === "add_exit_sign") { d.exitSign = true; applied.push(`Lit exit sign on ${d.id}`); }
     if (fx.change === "widen") { d.widthM = Math.min(2.4, d.widthM + 0.6); applied.push(`Widen ${d.id} to ${d.widthM.toFixed(1)} m`); }
   }

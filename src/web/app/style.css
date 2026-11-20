@@ -178,3 +178,12 @@ ol.people { list-style: none; margin: 0; padding: 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 .runhow { margin: -4px 0 10px; }
+.tally .smoky { display: block; margin-top: 4px; color: #8a5a00; font-weight: 600; }
+.tally .smoky.ok { color: var(--exit); }
+table.compare { width: 100%; border-collapse: collapse; font-size: 14px; margin: 12px 0 4px; }
+.compare th { text-align: right; font: 600 13px/1.2 var(--cond); color: var(--ink-2); border-bottom: 2px solid var(--ink); padding: 4px 0 4px 8px; }
+.compare th:first-child, .compare td:first-child { text-align: left; padding-left: 0; }
+.compare td { text-align: right; border-bottom: 1px solid var(--line); padding: 5px 0 5px 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.compare td:first-child { white-space: normal; color: var(--ink-2); }
+.fixedby { border-left: 3px solid var(--exit); padding: 4px 0 4px 12px; margin: 0 0 10px; font-size: 14px; }
+.fixedby ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); }

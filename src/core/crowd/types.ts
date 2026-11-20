@@ -73,6 +73,11 @@ export interface AgentSummary {
   peakHeatDose: number;
   peakCoDose: number;
   cause: "heat" | "co" | null;
+  /** Seconds spent in thick smoke (visibility under 3 m) or heat of 60 °C or more at head height. */
+  smokeS: number;
+  worstTempC: number;
+  worstVisM: number; // capped at 30 m
+  worstRoom: string | null; // room id where they met the hottest air
   decisions: DecisionLogEntry[];
 }
 

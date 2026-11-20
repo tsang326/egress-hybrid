@@ -367,7 +367,7 @@ export function assessmentSchema(plan: Plan) {
         type: "array",
         items: {
           type: "object",
-          properties: { door_id: { type: "string", enum: plan.doors.map((d) => d.id) }, change: { type: "string", enum: ["unlock", "keep_open", "add_exit_sign", "widen"] }, why: { type: "string" } },
+          properties: { door_id: { type: "string", enum: plan.doors.map((d) => d.id) }, change: { type: "string", enum: ["unlock", "keep_open", "keep_closed", "add_exit_sign", "widen"] }, why: { type: "string" } },
           required: ["door_id", "change", "why"],
         },
       },
@@ -381,7 +381,8 @@ export async function writeAssessment(where: Where, plan: Plan, facts: string): 
     `You help the person responsible for fire safety in a small building understand a simulated evacuation.
 This is a reference simulation, not a fire risk assessment, and you must not say the building is safe or compliant.
 Write: a summary of 2-3 sentences; 3-5 findings, each one sentence that points at a room, door or group of people; and 1-3 fixes
-that change a door (unlock it, keep it open, add a lit exit sign, or widen it). Each fix says why in one sentence. The app will
+that change a door: unlock it, keep it open, fit a door closer so it stays shut (keeps smoke out of escape routes), add a
+lit exit sign, or widen it. Each fix says why in one sentence. The app will
 re-run the simulation with your fixes to check them, so only suggest fixes you expect to change the outcome.
 
 ${describePlan(plan)}
