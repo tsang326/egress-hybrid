@@ -44,7 +44,7 @@ const S = {
   plan: structuredClone(SAMPLES[0]!.plan) as Plan,
   scenario: structuredClone(SAMPLES[0]!.scenario) as DrillScenario,
   mode: "standard" as Mode,
-  device: "no-api" as DeviceStatus,
+  device: "checking" as DeviceStatus,
   runs: [] as Run[],
   shown: 0,
   timeS: 0,
@@ -303,6 +303,7 @@ function renderDevice() {
   const el = $("#device");
   const st = S.device;
   const text: Record<DeviceStatus, string> = {
+    checking: "Checking for Gemini Nano on this computer…",
     available: "Gemini Nano is ready on this computer.",
     downloadable: "Gemini Nano can be downloaded to this computer.",
     downloading: "Gemini Nano is downloading…",

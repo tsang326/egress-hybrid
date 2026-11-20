@@ -67,7 +67,7 @@ export function textModel(where: Where, key: string, cloudModel = CLOUD_MODEL): 
   return m;
 }
 
-export type DeviceStatus = "available" | "downloadable" | "downloading" | "unavailable" | "no-api";
+export type DeviceStatus = "checking" | "available" | "downloadable" | "downloading" | "unavailable" | "no-api";
 
 export async function deviceStatus(): Promise<DeviceStatus> {
   const LM = (self as unknown as { LanguageModel?: { availability(o?: unknown): Promise<string> } }).LanguageModel;
