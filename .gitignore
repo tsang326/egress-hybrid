@@ -12,3 +12,4 @@ dist
 docs/refs/cfast-src/
 .env.local
 .env*.local
+.firebase/
