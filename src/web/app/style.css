@@ -187,3 +187,4 @@ table.compare { width: 100%; border-collapse: collapse; font-size: 14px; margin:
 .compare td:first-child { white-space: normal; color: var(--ink-2); }
 .fixedby { border-left: 3px solid var(--exit); padding: 4px 0 4px 12px; margin: 0 0 10px; font-size: 14px; }
 .fixedby ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); }
+.sharelink { flex-basis: 100%; margin: 4px 0 0; font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }

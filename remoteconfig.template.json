@@ -1,0 +1,7 @@
+{
+  "parameters": {
+    "cloud_ai": { "defaultValue": { "value": "true" }, "valueType": "BOOLEAN", "description": "false pauses all calls to Gemini in the cloud (Nano and the rules keep working)" },
+    "max_ai_calls_hybrid": { "defaultValue": { "value": "400" }, "valueType": "NUMBER", "description": "AI questions per run in hybrid mode" },
+    "max_ai_calls_device": { "defaultValue": { "value": "160" }, "valueType": "NUMBER", "description": "AI questions per run with Gemini Nano only" }
+  }
+}

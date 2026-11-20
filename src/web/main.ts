@@ -13,7 +13,9 @@ import { type DrillScenario, type PersonaKind } from "../core/plan/scenario";
 import { OUTSIDE, checkPlan, type Plan } from "../core/plan/types";
 import { applyFixes, factsText, runFacts, type Fix } from "../core/report";
 import { aiPolicy, type AiStats, parseScenario, readPlanPhoto, summariseRun, toDrill, writeAssessment, type Source } from "./app/ai";
-import { deviceStatus, prepareDevice, type DeviceStatus, type Where } from "./app/firebase";
+import { CLOUD_MODEL, deviceStatus, prepareDevice, type DeviceStatus, type Where } from "./app/firebase";
+import { LIMITS, loadLimits } from "./app/limits";
+import { loadShare, saveShare, shareUrl, type SharedRun } from "./app/share";
 import { fireForDrill } from "./app/fireRun";
 import { PlanRenderer } from "./app/render";
 
@@ -195,6 +197,10 @@ $("#scenario").addEventListener("click", (e) => {
 
 function loadPlan(plan: Plan, scenario: DrillScenario, notes: string[] = [], fromSample = true) {
   S.fromSample = fromSample;
+  // A plan read from a photo or opened from a link gets its own entry in the building list.
+  const sel = $<HTMLSelectElement>("#sample");
+  sel.querySelector('option[value="-1"]')?.remove();
+  if (!fromSample) { sel.insertAdjacentHTML("beforeend", `<option value="-1">${esc(plan.title || "Your plan")}</option>`); sel.value = "-1"; }
   S.plan = plan;
   S.scenario = scenario;
   S.notes = notes;
@@ -212,6 +218,7 @@ function loadPlan(plan: Plan, scenario: DrillScenario, notes: string[] = [], fro
 
 $<HTMLSelectElement>("#sample").addEventListener("change", (e) => {
   const i = Number((e.target as HTMLSelectElement).value);
+  if (i < 0) return;
   S.sample = i;
   loadPlan(structuredClone(SAMPLES[i]!.plan), structuredClone(SAMPLES[i]!.scenario));
 });
@@ -226,9 +233,16 @@ function setBusy(text: string) {
 
 /** Where the smaller AI tasks run: only on the device when the user asked for that, otherwise the device when it has
  *  Gemini Nano (Firebase AI Logic falls back to the cloud by itself), otherwise the cloud. */
-const aiWhere = (): Where => (S.mode === "device" ? "device" : S.device === "available" ? "auto" : "cloud");
+const CLOUD_PAUSED = "Gemini in the cloud is paused right now. Rules and Gemini Nano (on a computer that has it) still work.";
+/** With cloud AI paused in Remote Config, work that would go to the cloud stays on the device, or stops with a clear message. */
+const cloudOk = (w: Where): Where => {
+  if (LIMITS.cloudAi || w === "device") return w;
+  if (S.device === "available") return "device";
+  throw new Error(CLOUD_PAUSED);
+};
+const aiWhere = (): Where => cloudOk(S.mode === "device" ? "device" : S.device === "available" ? "auto" : "cloud");
 /** The plan photo and the fix suggestions need the bigger cloud model unless the user keeps everything local. */
-const heavyWhere = (): Where => (S.mode === "device" ? "device" : "cloud");
+const heavyWhere = (): Where => cloudOk(S.mode === "device" ? "device" : "cloud");
 
 $("#parse").addEventListener("click", async () => {
   const text = $<HTMLTextAreaElement>("#story").value.trim();
@@ -319,21 +333,22 @@ async function simulate(plan: Plan, scenario: DrillScenario, mode: Mode, label: 
   let rec: (Policy & { log: RecordedDecision[] }) | null = null;
   if (opts.replay) policy = replayPolicy(opts.replay);
   else if (mode !== "standard") {
-    const policyMode = mode === "hybrid" && S.device !== "available" ? "cloud" : mode;
+    let policyMode: "device" | "cloud" | "hybrid" = mode === "hybrid" && S.device !== "available" ? "cloud" : mode;
+    if (!LIMITS.cloudAi && policyMode !== "device") { if (S.device === "available") policyMode = "device"; else throw new Error(CLOUD_PAUSED); }
     const p = aiPolicy(policyMode, (st) => setBusy(`People are deciding what to do… ${st.onDevice} choices by Gemini Nano on this computer, ${st.inCloud} by Gemini in the cloud${st.errors ? `, ${st.errors} questions failed` : ""}`));
     ai = p.stats;
     rec = recordingPolicy(p);
     policy = rec;
   }
   setBusy(mode === "standard" && !opts.replay ? "Moving people…" : "People are deciding what to do…");
-  const crowd = await runCrowd(plan, scenario, fire, policy, { fallback: standardPolicy, maxAiCalls: MAX_AI[mode] });
+  const crowd = await runCrowd(plan, scenario, fire, policy, { fallback: standardPolicy, maxAiCalls: maxAi(mode) });
   return {
     label, plan, scenario, fire, fireNote, hazard: fire ? new HazardField(fire) : null, crowd, mode, ai, shutOpenFraction,
-    log: rec?.log ?? null, recorded: opts.replay ? { model: opts.replay.model, recordedAt: opts.replay.recordedAt, questions: opts.replay.questions, modelSeconds: opts.replay.modelSeconds } : null,
+    log: rec?.log ?? opts.replay?.decisions ?? null, recorded: opts.replay ? { model: opts.replay.model, recordedAt: opts.replay.recordedAt, questions: opts.replay.questions, modelSeconds: opts.replay.modelSeconds } : null,
   };
 }
 
-const MAX_AI: Record<Mode, number> = { standard: 0, device: 160, hybrid: 400 };
+const maxAi = (mode: Mode) => (mode === "standard" ? 0 : mode === "device" ? LIMITS.maxAiCallsDevice : LIMITS.maxAiCallsHybrid);
 
 $("#run").addEventListener("click", async () => {
   try {
@@ -523,7 +538,7 @@ function renderResults() {
     return ` <small class="${better ? "good" : "bad"}">${now > before ? "+" : ""}${now - before}</small>`;
   };
   const src = r.crowd.decisionsBySource;
-  const how = r.recorded ? "People played by Gemini Nano, recorded on a laptop"
+  const how = r.recorded ? (src.cloud ? `People played by Gemini (saved run): ${src.on_device} choices on a computer, ${src.cloud} in the cloud` : "People played by Gemini Nano (saved run)")
     : r.mode === "standard" ? "People follow the rules"
     : r.mode === "device" ? "People played by Gemini Nano on this computer"
     : `People played by Gemini: ${src.on_device} choices on this computer, ${src.cloud} in the cloud`;
@@ -545,6 +560,8 @@ function renderResults() {
     <div class="ai">
       ${r.summary ? `<div class="summary">${badge(r.summary.source)}${mdBullets(r.summary.text)}</div>` : `<button class="btn ghost" id="summ">Explain this run</button>`}
       <button class="btn ghost" id="assess">Suggest fixes and test them</button>
+      <button class="btn ghost" id="share">Share this run</button>
+      <p class="sharelink" id="sharelink"></p>
     </div>
     <div id="fixes">${renderFixes()}</div>
     <h3>Doors</h3>
@@ -561,6 +578,7 @@ function renderResults() {
       </li>`).join("")}</ol>`;
   document.getElementById("summ")?.addEventListener("click", explain);
   $("#assess").addEventListener("click", assess);
+  $("#share").addEventListener("click", share);
 }
 
 $("#results").addEventListener("click", (e) => {
@@ -632,16 +650,71 @@ async function tryFixes() {
   finally { setBusy(""); }
 }
 
+// ---- share links -----------------------------------------------------------------------------------------------
+
+function modelName(r: Run): string {
+  if (r.recorded) return r.recorded.model;
+  if (r.mode === "standard") return "rules";
+  const src = r.crowd.decisionsBySource;
+  if (r.mode === "device") return "Gemini Nano in Chrome";
+  return src.on_device ? `Gemini Nano in Chrome + ${CLOUD_MODEL}` : CLOUD_MODEL;
+}
+
+async function share() {
+  const r = current();
+  const out = $("#sharelink");
+  if (!r) return;
+  const btn = $<HTMLButtonElement>("#share");
+  btn.disabled = true;
+  out.textContent = "Saving…";
+  try {
+    const id = await saveShare({
+      label: r.label.replace(/^Run \d+:?\s*/, "") || r.plan.title || "Fire drill", mode: r.mode, plan: r.plan, scenario: r.scenario, shutOpenFraction: r.shutOpenFraction,
+      decisions: r.log ?? [], model: modelName(r), savedAt: r.recorded?.recordedAt ?? new Date().toISOString().slice(0, 10),
+      questions: r.ai?.calls ?? r.recorded?.questions ?? 0, modelSeconds: Math.round((r.ai?.ms ?? 0) / 1000) || r.recorded?.modelSeconds || 0,
+      ...(r.summary ? { summary: r.summary } : {}), ...(r.fixedBy ? { fixedBy: r.fixedBy } : {}),
+    });
+    const url = shareUrl(id);
+    out.innerHTML = `<a href="${esc(url)}">${esc(url)}</a>`;
+    try { await navigator.clipboard.writeText(url); out.insertAdjacentHTML("beforeend", " <span>Copied.</span>"); } catch { /* the link is on screen */ }
+  } catch (e) {
+    out.textContent = `Could not save the link: ${String(e).slice(0, 160)}`;
+  } finally { btn.disabled = false; }
+}
+
+/** Opens a shared run: same plan, same scenario, same AI answers; the fire and the crowd are simulated again here. */
+async function openShare(id: string) {
+  setBusy("Opening the shared run…");
+  try {
+    const sh: SharedRun | null = await loadShare(id);
+    if (!sh) { showError("That share link does not exist or has been deleted."); return; }
+    loadPlan(structuredClone(sh.plan), structuredClone(sh.scenario), [], false);
+    const replay: Recording | undefined = sh.mode === "standard" ? undefined : {
+      schemaVersion: 1, planTitle: sh.plan.title, scenarioSeed: sh.scenario.seed, shutOpenFraction: sh.shutOpenFraction, model: sh.model,
+      recordedAt: sh.savedAt, modelSeconds: sh.modelSeconds, questions: sh.questions, decisions: sh.decisions,
+    };
+    const run = await simulate(structuredClone(sh.plan), structuredClone(sh.scenario), sh.mode, `Shared: ${sh.plan.title}${sh.label && sh.label !== sh.plan.title && sh.label !== "Fire drill" ? `, ${sh.label}` : ""}`, replay ? { replay } : { forceFraction: sh.shutOpenFraction });
+    if (sh.summary) run.summary = sh.summary as NonNullable<Run["summary"]>;
+    if (sh.fixedBy) run.fixedBy = sh.fixedBy as NonNullable<Run["fixedBy"]>;
+    addRun(run);
+  } catch (e) { showError(`Could not open the shared run: ${String(e).slice(0, 200)}`); }
+  finally { setBusy(""); }
+}
+
 // ---- start -------------------------------------------------------------------------------------------------------
 
 loadPlan(S.plan, S.scenario);
 document.fonts?.ready.then(() => draw());
 deviceStatus().then((st) => { S.device = st; renderDevice(); });
+const limitsReady = loadLimits();
+const sharedId = new URLSearchParams(location.search).get("s");
+if (sharedId) limitsReady.then(() => openShare(sharedId));
 renderDevice();
 
 if (import.meta.env.DEV) {
   const w = window as unknown as Record<string, unknown>;
   w.__S = S;
+  w.__LIMITS = LIMITS;
   // Records a sample with the on-device model and checks that playing it back gives the same run.
   w.__record = async (i: number, model: string): Promise<string> => {
     const smp = SAMPLES[i]!;
