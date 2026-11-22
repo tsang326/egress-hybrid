@@ -106,7 +106,7 @@ export async function runCrowd(plan: Plan, s: DrillScenario, fire: Result | null
       const [lo, hi] = persona.preMovementS;
       const known = new Set(plan.doors.filter((d) => persona.knowsAllExits || publicDoor(d)).map((d) => d.id));
       for (const d of doorsOf.get(room.id) ?? []) known.add(d.id);
-      const name = `${NAMES[id % NAMES.length]}${id >= NAMES.length ? " " + (Math.floor(id / NAMES.length) + 1) : ""}`;
+      const name = `${NAMES[id % NAMES.length]}${id >= NAMES.length ? " " + "KMRSTW"[(Math.floor(id / NAMES.length) - 1) % 6] + "." : ""}`;
       agents.push({
         id, name, persona, room: room.id,
         x: room.x + 0.4 + rng() * (room.widthM - 0.8), y: room.y + 0.4 + rng() * (room.depthM - 0.8), floor: room.floor,

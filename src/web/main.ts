@@ -34,6 +34,7 @@ interface Run {
   shutOpenFraction: number;
   log: RecordedDecision[] | null; // the AI's answers, so a run can be saved and played back
   recorded: { model: string; recordedAt: string; questions: number; modelSeconds: number } | null;
+  wallS?: number | undefined;
   summary?: { text: string; source: Source };
   compareTo?: number; // the run this one is compared with (the run a fix was tested against)
   fixedBy?: { changes: string[]; why: string[]; source: Source };
@@ -65,7 +66,7 @@ const doorLabel = (p: Plan, id: string) => {
   return d ? `${d.id}: ${roomName(p, d.a)} to ${roomName(p, d.b)}` : id;
 };
 const fmtS = (s: number) => (s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, "0")} s`);
-const SOURCE_LABEL: Record<string, string> = { standard: "Rules", on_device: "On this device", cloud: "Cloud", fallback: "Rules (no AI answer)" };
+const SOURCE_LABEL: Record<string, string> = { standard: "Rules", on_device: "On this computer", cloud: "Cloud", fallback: "Rules (no AI answer)" };
 
 document.getElementById("app")!.innerHTML = `
 <header class="top">
@@ -289,7 +290,7 @@ function renderMode() {
   const hint: Record<Mode, string> = {
     standard: "Everyone takes the fastest exit they know about. Instant, no AI.",
     hybrid: nano
-      ? "Each person is played by Gemini. Gemini Nano on this computer answers what it can in a few seconds; Gemini in the cloud takes the rest."
+      ? "Each person is played by Gemini. Gemini Nano on this computer answers what it can in about 8 seconds at each moment; Gemini in the cloud takes the rest, in parallel."
       : "Each person is played by Gemini in the cloud. With Gemini Nano on this computer, it would answer first.",
     device: "Gemini Nano plays everyone on this computer. Nothing leaves it, and it is slower.",
   };
@@ -342,9 +343,11 @@ async function simulate(plan: Plan, scenario: DrillScenario, mode: Mode, label: 
     policy = rec;
   }
   setBusy(mode === "standard" && !opts.replay ? "Moving people…" : "People are deciding what to do…");
+  const t0 = performance.now();
   const crowd = await runCrowd(plan, scenario, fire, policy, { fallback: standardPolicy, maxAiCalls: maxAi(mode) });
+  const wallS = !opts.replay && mode !== "standard" ? Math.round((performance.now() - t0) / 1000) : undefined;
   return {
-    label, plan, scenario, fire, fireNote, hazard: fire ? new HazardField(fire) : null, crowd, mode, ai, shutOpenFraction,
+    wallS, label, plan, scenario, fire, fireNote, hazard: fire ? new HazardField(fire) : null, crowd, mode, ai, shutOpenFraction,
     log: rec?.log ?? opts.replay?.decisions ?? null, recorded: opts.replay ? { model: opts.replay.model, recordedAt: opts.replay.recordedAt, questions: opts.replay.questions, modelSeconds: opts.replay.modelSeconds } : null,
   };
 }
@@ -465,7 +468,7 @@ function compareTable(a: Run, fa: ReturnType<typeof runFacts>, b: Run, fb: Retur
   const rows: [string, number | null, number | null, boolean, (v: number | null) => string][] = [
     ["Got out", fa.out, fb.out, true, (v) => String(v)],
     ["Overcome", fa.incapacitated, fb.incapacitated, false, (v) => String(v)],
-    ["Only got out through smoke", fa.outThroughSmoke, fb.outThroughSmoke, false, (v) => String(v)],
+    ["Got out through smoke", fa.outThroughSmoke, fb.outThroughSmoke, false, (v) => String(v)],
     ["Hottest air on the way out", fa.worstTempOutC, fb.worstTempOutC, false, (v) => (v === null ? "–" : `${v} °C`)],
     ["Last one out", fa.lastOutS, fb.lastOutS, false, (v) => (v === null ? "–" : fmtS(v))],
     ["Longest queue at a door", q(a), q(b), false, (v) => String(v)],
@@ -539,10 +542,10 @@ function renderResults() {
     return ` <small class="${better ? "good" : "bad"}">${now > before ? "+" : ""}${now - before}</small>`;
   };
   const src = r.crowd.decisionsBySource;
-  const how = r.recorded ? (src.cloud ? `People played by Gemini (saved run): ${src.on_device} choices on a computer, ${src.cloud} in the cloud` : "People played by Gemini Nano (saved run)")
+  const how = r.recorded ? (src.cloud ? `People played by Gemini (saved run): ${src.on_device} choices by Gemini Nano, ${src.cloud} in the cloud` : "People played by Gemini Nano (saved run)")
     : r.mode === "standard" ? "People follow the rules"
-    : r.mode === "device" ? "People played by Gemini Nano on this computer"
-    : `People played by Gemini: ${src.on_device} choices on this computer, ${src.cloud} in the cloud`;
+    : r.mode === "device" ? `People played by Gemini Nano on this computer${r.wallS ? `; ${fmtS(r.wallS)} from start to finish` : ""}`
+    : `People played by Gemini: ${src.on_device} choices on this computer, ${src.cloud} in the cloud${r.wallS ? `; ${fmtS(r.wallS)} from start to finish` : ""}`;
   el.innerHTML = `
     <h2>${esc(r.label)}</h2>
     <p class="meta runhow">${how}</p>
@@ -551,7 +554,7 @@ function renderResults() {
     ${r.recorded ? `<p class="meta">Choices recorded with ${esc(r.recorded.model)} on ${esc(r.recorded.recordedAt)} (${r.recorded.questions} questions, ${Math.round(r.recorded.modelSeconds)} s of model time) and replayed here. The fire and the crowd are simulated again in your browser.</p>` : ""}
     ${r.ai && r.ai.errors ? `<p class="warn">${r.ai.errors} questions to the AI failed, so some people used the rules instead. Last error: ${esc(r.ai.lastError)}</p>` : ""}
     <div class="tally">
-      <div class="t out"><b>${f.out}</b><span>got out of ${f.total}${delta(f.out, prev?.out, true)}</span>${f.outThroughSmoke ? `<span class="smoky">${f.outThroughSmoke} only through smoke${delta(f.outThroughSmoke, prev?.outThroughSmoke, false)}</span>` : prev?.outThroughSmoke ? `<span class="smoky ok">none through smoke${delta(0, prev.outThroughSmoke, false)}</span>` : ""}</div>
+      <div class="t out"><b>${f.out}</b><span>got out of ${f.total}${delta(f.out, prev?.out, true)}</span>${f.outThroughSmoke ? `<span class="smoky">${f.outThroughSmoke} of them through smoke${delta(f.outThroughSmoke, prev?.outThroughSmoke, false)}</span>` : prev?.outThroughSmoke ? `<span class="smoky ok">none through smoke${delta(0, prev.outThroughSmoke, false)}</span>` : ""}</div>
       <div class="t down"><b>${f.incapacitated}</b><span>overcome${delta(f.incapacitated, prev?.incapacitated, false)}</span></div>
       <div class="t shelter"><b>${f.sheltering + f.inside}</b><span>still inside</span></div>
       <div class="t time"><b>${f.lastOutS !== null ? fmtS(f.lastOutS) : "–"}</b><span>last one out</span></div>
@@ -690,6 +693,8 @@ async function openShare(id: string) {
     const sh: SharedRun | null = await loadShare(id);
     if (!sh) { showError("That share link does not exist or has been deleted."); return; }
     loadPlan(structuredClone(sh.plan), structuredClone(sh.scenario), [], false);
+    const modeIn = document.querySelector<HTMLInputElement>(`input[name="mode"][value="${sh.mode}"]`);
+    if (modeIn && !modeIn.disabled) { S.mode = sh.mode as Mode; modeIn.checked = true; renderDevice(); }
     const replay: Recording | undefined = sh.mode === "standard" ? undefined : {
       schemaVersion: 1, planTitle: sh.plan.title, scenarioSeed: sh.scenario.seed, shutOpenFraction: sh.shutOpenFraction, model: sh.model,
       recordedAt: sh.savedAt, modelSeconds: sh.modelSeconds, questions: sh.questions, decisions: sh.decisions,
