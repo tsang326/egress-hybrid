@@ -62,7 +62,7 @@ export function textModel(where: Where, key: string, cloudModel = CLOUD_MODEL): 
     mode: MODE[where],
     inCloudParams: { model: cloudModel, generationConfig: { temperature: 0.5 } },
     onDeviceParams: { createOptions: { expectedInputs: [{ type: "text" }] } },
-  }, { timeout: 45000 });
+  }, { timeout: cloudModel.startsWith("gemma") ? 120000 : 45000 }); // Gemma (the last free fallback) is slower
   cache.set(k, m);
   return m;
 }
