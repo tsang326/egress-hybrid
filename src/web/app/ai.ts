@@ -7,7 +7,10 @@ import type { Fix } from "../../core/report";
 import { CLOUD_MODEL, CLOUD_VISION_MODEL, jsonModel, textModel, type Where } from "./firebase";
 
 export type Source = "on_device" | "cloud";
-export interface Answer<T> { value: T; source: Source; ms: number }
+export interface Answer<T> { value: T; source: Source; ms: number; model?: string | undefined } // model: the cloud model that answered
+/** Gemma is Google's open model; the app names it whenever it answered instead of Gemini. */
+export const GEMMA = "gemma-4-26b-a4b-it";
+export const isGemma = (model?: string): boolean => !!model && model.startsWith("gemma");
 
 function sourceOf(res: { response: { inferenceSource?: string } }): Source {
   return res.response.inferenceSource === "on_device" || res.response.inferenceSource === "ON_DEVICE" ? "on_device" : "cloud";
@@ -31,8 +34,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // cloud model; when both are used up, cloud questions stop for a while (longer each time) and the people who would
 // have asked them follow the rules, so a run always finishes.
 // On the free tier (AI Studio, Nov 2026): 3.5 Flash-Lite and 3.1 Flash-Lite each allow 15 requests a minute and
-// 500 a day; 3.5 Flash allows 5 a minute and 20 a day, so it is the last resort.
-const CLOUD_MODELS = [CLOUD_MODEL, "gemini-3.1-flash-lite", CLOUD_VISION_MODEL];
+// 500 a day; Gemma 4 26B A4B 30 a minute and 14,400 a day (but 16K tokens a minute); 3.5 Flash 5 a minute and 20 a
+// day, so it is the last resort.
+const CLOUD_MODELS = [CLOUD_MODEL, "gemini-3.1-flash-lite", GEMMA, CLOUD_VISION_MODEL];
 const quotaOutUntil = new Map<string, number>();
 const quotaStrikes = new Map<string, number>();
 const hasQuota = (model: string) => (quotaOutUntil.get(model) ?? 0) <= Date.now();
@@ -43,7 +47,7 @@ function quotaUsedUp(model: string, daily: boolean): void {
 }
 /** True while every cloud model has hit its quota. */
 export const cloudQuotaOut = (): boolean => !CLOUD_MODELS.some(hasQuota);
-export const QUOTA_OUT = "Gemini in the cloud has used up its free quota for now. Rules, Gemini Nano (on a computer that has it) and the recorded Gemini Nano runs still work.";
+export const QUOTA_OUT = "The free cloud models (Gemini, then Gemma) are out of quota or busy right now. Rules, Gemini Nano (on a computer that has it) and the recorded Gemini Nano runs still work.";
 
 /** Calls a model with the rate limit, retries and quota fallback above. Device calls go straight through. */
 async function call<R>(where: Where, primary: string, run: (model: string) => Promise<R>, canFallBack: boolean): Promise<R> {
@@ -58,20 +62,30 @@ async function call<R>(where: Where, primary: string, run: (model: string) => Pr
       return await run(model);
     } catch (e) {
       const m = String(e);
-      if (/\b429\b|quota|exhausted/i.test(m)) {
+      // The API also answers 429 when a model is overloaded; that is a busy model, not a used-up quota.
+      if (/\b429\b|quota|exhausted/i.test(m) && !/overloaded|high demand/i.test(m)) {
         const daily = /per ?day|daily/i.test(m);
-        // One 20 s wait covers a per-minute limit; a second 429 in a row means this model's quota is used up.
-        if (!daily && ++quotaHits < 2) { await sleep(20000); continue; }
+        // One 20 s wait covers a per-minute limit (two for Gemma, whose token limit per minute is small); after
+        // that, a 429 means this model's quota is used up.
+        if (!daily && ++quotaHits < (isGemma(model) ? 3 : 2)) { await sleep(20000); continue; }
         quotaUsedUp(model, daily);
         quotaHits = 0;
         model = order.find(hasQuota);
         if (!model) throw new Error(QUOTA_OUT);
         continue;
       }
+      const busy = /\b(429|500|503)\b|high demand|overloaded|abort|timeout/i.test(m);
+      // A busy fallback model is set aside for 2 minutes and the next one is tried, so a run never waits long on it.
+      if (busy && model !== primary) {
+        quotaOutUntil.set(model, Date.now() + 2 * 60e3);
+        model = order.find(hasQuota);
+        if (!model) throw new Error(QUOTA_OUT);
+        continue;
+      }
       if (++errors > 2) throw e;
-      if (/\b(500|503)\b|high demand|overloaded|abort|timeout/i.test(m)) {
+      if (busy) {
         if (canFallBack && model !== CLOUD_MODEL && hasQuota(CLOUD_MODEL)) model = CLOUD_MODEL; // a busy larger model falls back to the lighter one
-        await sleep(1500);
+        await sleep(/overloaded|high demand/i.test(m) ? 5000 : 1500);
         continue;
       }
       throw e;
@@ -83,9 +97,11 @@ async function askJson<T>(where: Where, key: string, schema: Record<string, unkn
   const t0 = performance.now();
   const content = parts.map((p) => (typeof p === "string" ? { type: "text" as const, text: p } : { type: "inlineData" as const, ...p }));
   const primary = opts.cloudModel ?? CLOUD_MODEL;
-  const res = await call(where, primary, (model) => jsonModel(where, key + model, schema, { ...opts, cloudModel: model }).generateContent(content), primary !== CLOUD_MODEL);
+  let used = primary;
+  const res = await call(where, primary, (model) => (used = model, jsonModel(where, key + model, schema, { ...opts, cloudModel: model, ...(isGemma(model) ? { timeoutMs: 120000 } : {}) }).generateContent(content)), primary !== CLOUD_MODEL);
   const text = res.response.text().trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
-  return { value: JSON.parse(text) as T, source: sourceOf(res), ms: Math.round(performance.now() - t0) };
+  const source = sourceOf(res);
+  return { value: JSON.parse(text) as T, source, ms: Math.round(performance.now() - t0), model: source === "cloud" ? used : undefined };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -282,6 +298,7 @@ export interface AiStats {
   calls: number; people: number; answered: number; errors: number; lastError: string; ms: number;
   onDevice: number; inCloud: number; handedToCloud: number; // answers by where they ran; groups Nano could not finish
   quotaOut?: boolean; // the cloud quota ran out during the run, so the cloud's share followed the rules
+  gemma?: number; // cloud choices Gemma made because Gemini's quota was used up
 }
 
 export type PolicyMode = "device" | "cloud" | "hybrid";
@@ -336,6 +353,7 @@ export function aiPolicy(mode: PolicyMode, onCall?: (st: AiStats) => void): Poli
           out.push({ agentId: g.reqs[k]!.agentId, optionId: x.option, reason: x.reason.slice(0, 120), source: a.source === "on_device" ? "on_device" : "cloud" });
           stats.answered++;
           if (a.source === "on_device") stats.onDevice++; else stats.inCloud++;
+          if (isGemma(a.model)) stats.gemma = (stats.gemma ?? 0) + 1;
         }
       });
     }
@@ -385,12 +403,14 @@ export function aiPolicy(mode: PolicyMode, onCall?: (st: AiStats) => void): Poli
 
 export async function summariseRun(where: Where, facts: string): Promise<Answer<string>> {
   const t0 = performance.now();
-  const res = await call(where, CLOUD_MODEL, (model) => textModel(where, "summary" + model, model).generateContent(`You are reviewing the result of one fire evacuation simulation for the person responsible for fire safety in a small building.
+  let used = CLOUD_MODEL;
+  const res = await call(where, CLOUD_MODEL, (model) => (used = model, textModel(where, "summary" + model, model)).generateContent(`You are reviewing the result of one fire evacuation simulation for the person responsible for fire safety in a small building.
 Write 3 short bullet points (at most 20 words each): what went wrong, where people got stuck, and the single most useful thing to change.
 Use only the facts below. Do not invent numbers.
 
 ${facts}`), false);
-  return { value: res.response.text().trim(), source: sourceOf(res), ms: Math.round(performance.now() - t0) };
+  const source = sourceOf(res);
+  return { value: res.response.text().trim(), source, ms: Math.round(performance.now() - t0), model: source === "cloud" ? used : undefined };
 }
 
 export interface Assessment { summary: string; findings: string[]; fixes: Fix[] }

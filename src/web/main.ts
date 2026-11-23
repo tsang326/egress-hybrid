@@ -12,7 +12,7 @@ import { SAMPLES } from "../core/plan/samples";
 import { type DrillScenario, type PersonaKind } from "../core/plan/scenario";
 import { OUTSIDE, checkPlan, type Plan } from "../core/plan/types";
 import { applyFixes, factsText, runFacts, type Fix } from "../core/report";
-import { aiPolicy, type AiStats, cloudQuotaOut, parseScenario, QUOTA_OUT, readPlanPhoto, summariseRun, toDrill, writeAssessment, type Source } from "./app/ai";
+import { aiPolicy, type AiStats, cloudQuotaOut, isGemma, parseScenario, QUOTA_OUT, readPlanPhoto, summariseRun, toDrill, writeAssessment, type Source } from "./app/ai";
 import { CLOUD_MODEL, deviceStatus, prepareDevice, type DeviceStatus, type Where } from "./app/firebase";
 import { LIMITS, loadLimits } from "./app/limits";
 import { loadShare, saveShare, shareUrl, type SharedRun } from "./app/share";
@@ -35,9 +35,9 @@ interface Run {
   log: RecordedDecision[] | null; // the AI's answers, so a run can be saved and played back
   recorded: { model: string; recordedAt: string; questions: number; modelSeconds: number } | null;
   wallS?: number | undefined;
-  summary?: { text: string; source: Source };
+  summary?: { text: string; source: Source; model?: string | undefined };
   compareTo?: number; // the run this one is compared with (the run a fix was tested against)
-  fixedBy?: { changes: string[]; why: string[]; source: Source };
+  fixedBy?: { changes: string[]; why: string[]; source: Source; model?: string | undefined };
 }
 
 const S = {
@@ -54,7 +54,7 @@ const S = {
   selected: null as number | null,
   busy: "" as string,
   notes: [] as string[],
-  fixes: null as { summary: string; findings: string[]; fixes: Fix[]; source: Source } | null,
+  fixes: null as { summary: string; findings: string[]; fixes: Fix[]; source: Source; model?: string | undefined } | null,
   fromSample: true,
 };
 
@@ -498,7 +498,7 @@ function introHtml() {
 
 // ---- results -----------------------------------------------------------------------------------------------------
 
-const badge = (src: string) => `<span class="badge ${src}">${esc(SOURCE_LABEL[src] ?? src)}</span>`;
+const badge = (src: string, model?: string) => `<span class="badge ${src}">${esc(SOURCE_LABEL[src] ?? src)}${isGemma(model) ? ", Gemma 4" : ""}</span>`;
 
 function renderRuns() {
   const el = $("#runs");
@@ -545,11 +545,11 @@ function renderResults() {
   const how = r.recorded ? (src.cloud ? `People played by Gemini (saved run): ${src.on_device} choices by Gemini Nano, ${src.cloud} in the cloud` : "People played by Gemini Nano (saved run)")
     : r.mode === "standard" ? "People follow the rules"
     : r.mode === "device" ? `People played by Gemini Nano on this computer${r.wallS ? `; ${fmtS(r.wallS)} from start to finish` : ""}`
-    : `People played by Gemini: ${src.on_device} choices on this computer, ${src.cloud} in the cloud${r.wallS ? `; ${fmtS(r.wallS)} from start to finish` : ""}`;
+    : `People played by Gemini: ${src.on_device} choices on this computer, ${src.cloud} in the cloud${r.ai?.gemma ? ` (${r.ai.gemma} of them by Gemma 4, Google's open model, because Gemini was out of free quota or busy)` : ""}${r.wallS ? `; ${fmtS(r.wallS)} from start to finish` : ""}`;
   el.innerHTML = `
     <h2>${esc(r.label)}</h2>
     <p class="meta runhow">${how}</p>
-    ${r.fixedBy ? `<div class="fixedby">${badge(r.fixedBy.source)} <b>Changes suggested by Gemini:</b> ${esc(r.fixedBy.changes.join(", "))}<ul>${r.fixedBy.why.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
+    ${r.fixedBy ? `<div class="fixedby">${badge(r.fixedBy.source, r.fixedBy.model)} <b>Changes suggested by ${isGemma(r.fixedBy.model) ? "Gemma 4 (Gemini was out of free quota or busy)" : "Gemini"}:</b> ${esc(r.fixedBy.changes.join(", "))}<ul>${r.fixedBy.why.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
     ${r.fireNote ? `<p class="warn">${esc(r.fireNote)}</p>` : ""}
     ${r.recorded ? `<p class="meta">Choices recorded with ${esc(r.recorded.model)} on ${esc(r.recorded.recordedAt)} (${r.recorded.questions} questions, ${Math.round(r.recorded.modelSeconds)} s of model time) and replayed here. The fire and the crowd are simulated again in your browser.</p>` : ""}
     ${r.ai?.quotaOut ? `<p class="warn">${esc(QUOTA_OUT)} In this run, the choices the cloud would have made followed the rules.${S.device !== "available" ? " In the sample buildings, <b>Play the recorded Gemini Nano run</b> shows Gemini playing the people." : ""}</p>` : r.ai && r.ai.errors ? `<p class="warn">${r.ai.errors} questions to the AI failed, so some people used the rules instead. Last error: ${esc(r.ai.lastError)}</p>` : ""}
@@ -562,7 +562,7 @@ function renderResults() {
     <p class="meta">${esc(fireItem(r.scenario.fire.item).label)} in ${esc(roomName(r.plan, r.scenario.fire.room))}, alarm at ${r.scenario.alarmDelayS} s${r.scenario.lockedDoors.length ? `, out of use: ${r.scenario.lockedDoors.map(esc).join(", ")}` : ""}. Decisions: ${bySrc}${r.ai && r.ai.calls ? ` <span class="nowrap">(${r.ai.calls} questions, ${(r.ai.ms / 1000).toFixed(0)} s of model time)</span>` : ""}</p>
     ${prevRun && prev ? compareTable(prevRun, prev, r, f) : ""}
     <div class="ai">
-      ${r.summary ? `<div class="summary">${badge(r.summary.source)}${mdBullets(r.summary.text)}</div>` : `<button class="btn ghost" id="summ">Explain this run</button>`}
+      ${r.summary ? `<div class="summary">${badge(r.summary.source, r.summary.model)}${mdBullets(r.summary.text)}</div>` : `<button class="btn ghost" id="summ">Explain this run</button>`}
       <button class="btn ghost" id="assess">Suggest fixes and test them</button>
       <button class="btn ghost" id="share">Share this run</button>
       <p class="sharelink" id="sharelink"></p>
@@ -609,7 +609,7 @@ async function explain() {
   setBusy("Writing a short reading of this run…");
   try {
     const a = await summariseRun(aiWhere(), factsText(r.plan, r.scenario, r.fire, r.crowd));
-    r.summary = { text: a.value, source: a.source };
+    r.summary = { text: a.value, source: a.source, model: a.model };
   } catch (e) { showError(`Could not explain the run: ${String(e).slice(0, 200)}`); }
   finally { setBusy(""); renderResults(); }
 }
@@ -617,7 +617,7 @@ async function explain() {
 function renderFixes() {
   if (!S.fixes) return "";
   const fx = S.fixes;
-  return `<div class="assess">${badge(fx.source)}<p>${esc(fx.summary)}</p><ul>${fx.findings.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+  return `<div class="assess">${badge(fx.source, fx.model)}<p>${esc(fx.summary)}</p><ul>${fx.findings.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
     ${fx.fixes.length ? `<h4>Suggested changes</h4><ul class="fixlist">${fx.fixes.map((x) => `<li><b>${esc(fixLabel(x))}</b> ${esc(x.why)}</li>`).join("")}</ul><button class="btn primary" id="tryfix">Re-run with these changes</button>` : ""}</div>`;
 }
 const fixLabel = (x: Fix) => ({ unlock: `Unlock ${x.door_id}`, keep_open: `Keep ${x.door_id} open`, keep_closed: `Door closer on ${x.door_id}`, add_exit_sign: `Lit exit sign on ${x.door_id}`, widen: `Widen ${x.door_id}` })[x.change];
@@ -628,7 +628,7 @@ async function assess() {
   setBusy("Looking for changes that would help…");
   try {
     const a = await writeAssessment(heavyWhere(), r.plan, factsText(r.plan, r.scenario, r.fire, r.crowd));
-    S.fixes = { ...a.value, source: a.source };
+    S.fixes = { ...a.value, source: a.source, model: a.model };
   } catch (e) { showError(`Could not suggest fixes: ${String(e).slice(0, 200)}`); }
   finally { setBusy(""); renderResults(); }
 }
@@ -643,7 +643,7 @@ async function tryFixes() {
     // A recorded run cannot be replayed with different doors, so a fix is tested with live AI instead.
     const run = await simulate(plan, scenario, r.recorded ? "hybrid" : r.mode, `Run ${S.runs.length + 1}: ${applied.join(", ")}`);
     run.compareTo = base;
-    run.fixedBy = { changes: applied, why: fx.fixes.map((x) => x.why), source: fx.source };
+    run.fixedBy = { changes: applied, why: fx.fixes.map((x) => x.why), source: fx.source, model: fx.model };
     // The changes become the new set-up, so the next run builds on them.
     S.plan = structuredClone(plan);
     S.scenario = structuredClone(scenario);
