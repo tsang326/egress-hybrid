@@ -12,7 +12,7 @@ import { SAMPLES } from "../core/plan/samples";
 import { type DrillScenario, type PersonaKind } from "../core/plan/scenario";
 import { OUTSIDE, checkPlan, type Plan } from "../core/plan/types";
 import { applyFixes, factsText, runFacts, type Fix } from "../core/report";
-import { aiPolicy, type AiStats, parseScenario, readPlanPhoto, summariseRun, toDrill, writeAssessment, type Source } from "./app/ai";
+import { aiPolicy, type AiStats, cloudQuotaOut, parseScenario, QUOTA_OUT, readPlanPhoto, summariseRun, toDrill, writeAssessment, type Source } from "./app/ai";
 import { CLOUD_MODEL, deviceStatus, prepareDevice, type DeviceStatus, type Where } from "./app/firebase";
 import { LIMITS, loadLimits } from "./app/limits";
 import { loadShare, saveShare, shareUrl, type SharedRun } from "./app/share";
@@ -237,9 +237,9 @@ function setBusy(text: string) {
 const CLOUD_PAUSED = "Gemini in the cloud is paused right now. Rules and Gemini Nano (on a computer that has it) still work.";
 /** With cloud AI paused in Remote Config, work that would go to the cloud stays on the device, or stops with a clear message. */
 const cloudOk = (w: Where): Where => {
-  if (LIMITS.cloudAi || w === "device") return w;
+  if ((LIMITS.cloudAi && !cloudQuotaOut()) || w === "device") return w;
   if (S.device === "available") return "device";
-  throw new Error(CLOUD_PAUSED);
+  throw new Error(LIMITS.cloudAi ? QUOTA_OUT : CLOUD_PAUSED);
 };
 const aiWhere = (): Where => cloudOk(S.mode === "device" ? "device" : S.device === "available" ? "auto" : "cloud");
 /** The plan photo and the fix suggestions need the bigger cloud model unless the user keeps everything local. */
@@ -337,7 +337,7 @@ async function simulate(plan: Plan, scenario: DrillScenario, mode: Mode, label: 
   else if (mode !== "standard") {
     let policyMode: "device" | "cloud" | "hybrid" = mode === "hybrid" && S.device !== "available" ? "cloud" : mode;
     if (!LIMITS.cloudAi && policyMode !== "device") { if (S.device === "available") policyMode = "device"; else throw new Error(CLOUD_PAUSED); }
-    const p = aiPolicy(policyMode, (st) => setBusy(`People are deciding what to do… ${st.onDevice} choices by Gemini Nano on this computer, ${st.inCloud} by Gemini in the cloud${st.errors ? `, ${st.errors} questions failed` : ""}`));
+    const p = aiPolicy(policyMode, (st) => setBusy(`People are deciding what to do… ${st.onDevice} choices by Gemini Nano on this computer, ${st.inCloud} by Gemini in the cloud${st.quotaOut ? "; the cloud quota is used up, so the cloud's share follows the rules" : st.errors ? `, ${st.errors} questions failed` : ""}`));
     ai = p.stats;
     rec = recordingPolicy(p);
     policy = rec;
@@ -552,7 +552,7 @@ function renderResults() {
     ${r.fixedBy ? `<div class="fixedby">${badge(r.fixedBy.source)} <b>Changes suggested by Gemini:</b> ${esc(r.fixedBy.changes.join(", "))}<ul>${r.fixedBy.why.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
     ${r.fireNote ? `<p class="warn">${esc(r.fireNote)}</p>` : ""}
     ${r.recorded ? `<p class="meta">Choices recorded with ${esc(r.recorded.model)} on ${esc(r.recorded.recordedAt)} (${r.recorded.questions} questions, ${Math.round(r.recorded.modelSeconds)} s of model time) and replayed here. The fire and the crowd are simulated again in your browser.</p>` : ""}
-    ${r.ai && r.ai.errors ? `<p class="warn">${r.ai.errors} questions to the AI failed, so some people used the rules instead. Last error: ${esc(r.ai.lastError)}</p>` : ""}
+    ${r.ai?.quotaOut ? `<p class="warn">${esc(QUOTA_OUT)} In this run, the choices the cloud would have made followed the rules.${S.device !== "available" ? " In the sample buildings, <b>Play the recorded Gemini Nano run</b> shows Gemini playing the people." : ""}</p>` : r.ai && r.ai.errors ? `<p class="warn">${r.ai.errors} questions to the AI failed, so some people used the rules instead. Last error: ${esc(r.ai.lastError)}</p>` : ""}
     <div class="tally">
       <div class="t out"><b>${f.out}</b><span>got out of ${f.total}${delta(f.out, prev?.out, true)}</span>${f.outThroughSmoke ? `<span class="smoky">${f.outThroughSmoke} of them through smoke${delta(f.outThroughSmoke, prev?.outThroughSmoke, false)}</span>` : prev?.outThroughSmoke ? `<span class="smoky ok">none through smoke${delta(0, prev.outThroughSmoke, false)}</span>` : ""}</div>
       <div class="t down"><b>${f.incapacitated}</b><span>overcome${delta(f.incapacitated, prev?.incapacitated, false)}</span></div>
