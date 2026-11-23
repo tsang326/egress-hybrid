@@ -30,7 +30,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Free-tier quotas are counted per model. When one cloud model's quota is used up, questions move to the other
 // cloud model; when both are used up, cloud questions stop for a while (longer each time) and the people who would
 // have asked them follow the rules, so a run always finishes.
-const CLOUD_MODELS = [CLOUD_MODEL, CLOUD_VISION_MODEL];
+// On the free tier (AI Studio, Nov 2026): 3.5 Flash-Lite and 3.1 Flash-Lite each allow 15 requests a minute and
+// 500 a day; 3.5 Flash allows 5 a minute and 20 a day, so it is the last resort.
+const CLOUD_MODELS = [CLOUD_MODEL, "gemini-3.1-flash-lite", CLOUD_VISION_MODEL];
 const quotaOutUntil = new Map<string, number>();
 const quotaStrikes = new Map<string, number>();
 const hasQuota = (model: string) => (quotaOutUntil.get(model) ?? 0) <= Date.now();
