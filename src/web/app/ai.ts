@@ -27,19 +27,51 @@ async function cloudSlot(): Promise<void> {
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Calls a model with the rate limit and retries above. Device calls go straight through. */
-async function call<R>(where: Where, run: (fallbackModel: boolean) => Promise<R>, canFallBack: boolean): Promise<R> {
-  if (where === "device") return run(false);
-  let fallback = false;
-  for (let attempt = 0; ; attempt++) {
+// Free-tier quotas are counted per model. When one cloud model's quota is used up, questions move to the other
+// cloud model; when both are used up, cloud questions stop for a while (longer each time) and the people who would
+// have asked them follow the rules, so a run always finishes.
+const CLOUD_MODELS = [CLOUD_MODEL, CLOUD_VISION_MODEL];
+const quotaOutUntil = new Map<string, number>();
+const quotaStrikes = new Map<string, number>();
+const hasQuota = (model: string) => (quotaOutUntil.get(model) ?? 0) <= Date.now();
+function quotaUsedUp(model: string, daily: boolean): void {
+  const strikes = (quotaStrikes.get(model) ?? 0) + 1;
+  quotaStrikes.set(model, strikes);
+  quotaOutUntil.set(model, Date.now() + (daily ? 24 * 3600e3 : Math.min(24 * 3600e3, 5 * 60e3 * 2 ** (strikes - 1))));
+}
+/** True while every cloud model has hit its quota. */
+export const cloudQuotaOut = (): boolean => !CLOUD_MODELS.some(hasQuota);
+export const QUOTA_OUT = "Gemini in the cloud has used up its free quota for now. Rules, Gemini Nano (on a computer that has it) and the recorded Gemini Nano runs still work.";
+
+/** Calls a model with the rate limit, retries and quota fallback above. Device calls go straight through. */
+async function call<R>(where: Where, primary: string, run: (model: string) => Promise<R>, canFallBack: boolean): Promise<R> {
+  if (where === "device") return run(primary);
+  const order = [primary, ...CLOUD_MODELS.filter((m) => m !== primary)];
+  let model = order.find(hasQuota);
+  if (!model) throw new Error(QUOTA_OUT);
+  let errors = 0, quotaHits = 0;
+  for (;;) {
     await cloudSlot();
     try {
-      return await run(fallback);
+      return await run(model);
     } catch (e) {
       const m = String(e);
-      if (attempt >= 2) throw e;
-      if (/\b429\b|quota|exhausted/i.test(m)) { await sleep(20000); continue; }
-      if (/\b(500|503)\b|high demand|overloaded|abort|timeout/i.test(m)) { if (canFallBack) fallback = true; await sleep(1500); continue; }
+      if (/\b429\b|quota|exhausted/i.test(m)) {
+        const daily = /per ?day|daily/i.test(m);
+        // One 20 s wait covers a per-minute limit; a second 429 in a row means this model's quota is used up.
+        if (!daily && ++quotaHits < 2) { await sleep(20000); continue; }
+        quotaUsedUp(model, daily);
+        quotaHits = 0;
+        model = order.find(hasQuota);
+        if (!model) throw new Error(QUOTA_OUT);
+        continue;
+      }
+      if (++errors > 2) throw e;
+      if (/\b(500|503)\b|high demand|overloaded|abort|timeout/i.test(m)) {
+        if (canFallBack && model !== CLOUD_MODEL && hasQuota(CLOUD_MODEL)) model = CLOUD_MODEL; // a busy larger model falls back to the lighter one
+        await sleep(1500);
+        continue;
+      }
       throw e;
     }
   }
@@ -48,8 +80,8 @@ async function call<R>(where: Where, run: (fallbackModel: boolean) => Promise<R>
 async function askJson<T>(where: Where, key: string, schema: Record<string, unknown>, parts: (string | { inlineData: { mimeType: string; data: string } })[], opts: { image?: boolean; cloudModel?: string; timeoutMs?: number } = {}): Promise<Answer<T>> {
   const t0 = performance.now();
   const content = parts.map((p) => (typeof p === "string" ? { type: "text" as const, text: p } : { type: "inlineData" as const, ...p }));
-  const canFallBack = !!opts.cloudModel && opts.cloudModel !== CLOUD_MODEL; // a busy larger model falls back to the lighter one
-  const res = await call(where, (fb) => jsonModel(where, key + (fb ? CLOUD_MODEL : opts.cloudModel ?? ""), schema, { ...opts, ...(fb ? { cloudModel: CLOUD_MODEL } : {}) }).generateContent(content), canFallBack);
+  const primary = opts.cloudModel ?? CLOUD_MODEL;
+  const res = await call(where, primary, (model) => jsonModel(where, key + model, schema, { ...opts, cloudModel: model }).generateContent(content), primary !== CLOUD_MODEL);
   const text = res.response.text().trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
   return { value: JSON.parse(text) as T, source: sourceOf(res), ms: Math.round(performance.now() - t0) };
 }
@@ -247,6 +279,7 @@ ${opts}`;
 export interface AiStats {
   calls: number; people: number; answered: number; errors: number; lastError: string; ms: number;
   onDevice: number; inCloud: number; handedToCloud: number; // answers by where they ran; groups Nano could not finish
+  quotaOut?: boolean; // the cloud quota ran out during the run, so the cloud's share followed the rules
 }
 
 export type PolicyMode = "device" | "cloud" | "hybrid";
@@ -271,12 +304,14 @@ export function aiPolicy(mode: PolicyMode, onCall?: (st: AiStats) => void): Poli
   /** Asks one batch; returns the groups it could not answer. */
   async function ask(where: "device" | "cloud", batch: Group[], out: Decision[]): Promise<Group[]> {
     const people = batch.reduce((n, g) => n + g.reqs.length, 0);
+    if (where === "cloud" && cloudQuotaOut()) { stats.quotaOut = true; onCall?.(stats); return batch; }
     let a: Answer<Reply>;
     try {
       a = await askJson<Reply>(where, "decide", DECISION_SCHEMA, [`${DECISION_RULES}\n\n${batch.map(describeGroup).join("\n\n")}`]);
     } catch (e) {
       stats.errors++;
       stats.lastError = String(e).slice(0, 200);
+      if (cloudQuotaOut()) stats.quotaOut = true;
       if (where === "device") deviceFailures++;
       onCall?.(stats);
       return batch;
@@ -332,7 +367,8 @@ export function aiPolicy(mode: PolicyMode, onCall?: (st: AiStats) => void): Poli
       const groups = groupRequests(reqs);
       if (mode === "device") { await onDevice(groups, out); return out; }
       if (mode === "cloud") { await inCloud(groups, out); return out; }
-      const n = deviceFailures >= 2 ? 0 : Math.max(1, Math.floor(DEVICE_BUDGET_S / deviceSPerGroup));
+      // With the cloud quota used up, Nano takes every group it can.
+      const n = deviceFailures >= 2 ? 0 : cloudQuotaOut() ? groups.length : Math.max(1, Math.floor(DEVICE_BUDGET_S / deviceSPerGroup));
       const mine = groups.slice(0, n), rest = groups.slice(n);
       stats.handedToCloud += rest.length;
       const [missed] = await Promise.all([onDevice(mine, out), inCloud(rest, out)]);
@@ -347,8 +383,7 @@ export function aiPolicy(mode: PolicyMode, onCall?: (st: AiStats) => void): Poli
 
 export async function summariseRun(where: Where, facts: string): Promise<Answer<string>> {
   const t0 = performance.now();
-  const m = textModel(where, "summary");
-  const res = await call(where, () => m.generateContent(`You are reviewing the result of one fire evacuation simulation for the person responsible for fire safety in a small building.
+  const res = await call(where, CLOUD_MODEL, (model) => textModel(where, "summary" + model, model).generateContent(`You are reviewing the result of one fire evacuation simulation for the person responsible for fire safety in a small building.
 Write 3 short bullet points (at most 20 words each): what went wrong, where people got stuck, and the single most useful thing to change.
 Use only the facts below. Do not invent numbers.
 

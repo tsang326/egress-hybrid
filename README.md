@@ -1,7 +1,7 @@
 # Egress
 
-Run a fire drill on your building's floor plan before you run it for real. Gemini plays every person inside:
-Gemini Nano on your laptop first, Gemini in the cloud for the rest, through Firebase AI Logic.
+Run a fire drill on your building's floor plan before you run it for real. In Gemini mode, every person is played by
+Gemini: Gemini Nano on your laptop takes what it can, Gemini in the cloud the rest, through Firebase AI Logic.
 
 Live: https://egress-hybrid-mntd.web.app (desktop Chrome; Gemini Nano is optional)
 
@@ -15,8 +15,8 @@ fire authority or an engineer.**
    also type it as a sentence and let Gemini fill the form.
 3. Run the drill. A two-zone fire and smoke model (re-implemented from the method of NIST CFAST 7.7.7) runs in a Web
    Worker; people move, queue at doors and breathe what the fire model says is in their room. When something happens
-   to them (alarm, smoke, a blocked door, waiting too long), Gemini decides what they do and why.
-4. Read the result: who got out, who was overcome, who only got out through thick smoke or hot air, every person's
+   to them (alarm, smoke, a blocked door, waiting too long), in the Gemini modes Gemini decides what they do and why (Rules mode uses fixed rules, no AI).
+4. Read the result: who got out, who was overcome, who got out only by passing through thick smoke or hot air, every person's
    choices with the model that made them.
 5. "Suggest fixes and test them": Gemini proposes door changes (unlock, keep open, door closer, exit sign, widen);
    one click re-runs the drill with them and shows both runs side by side.

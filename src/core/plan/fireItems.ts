@@ -24,8 +24,8 @@ const OIL: Fire["fuel"] = { c: 18, h: 34, o: 2, n: 0, cl: 0, heatOfCombustionJPe
 const MIXED: Fire["fuel"] = { c: 1, h: 1.5, o: 0.4, n: 0, cl: 0, heatOfCombustionJPerKg: 2.0e7 };
 
 export const FIRE_ITEMS: FireItem[] = [
-  { id: "upholstered_chair", label: "Upholstered chair", peakKW: 650, growth: "fast", holdS: 120, decayS: 300, source: "measured", fuel: POLYURETHANE, sootYield: 0.08, coYield: 0.02, heightM: 0.5, areaM2: 0.5 },
-  { id: "foam_mattress", label: "Foam mattress", peakKW: 900, growth: "fast", holdS: 120, decayS: 300, source: "measured", fuel: POLYURETHANE, sootYield: 0.1, coYield: 0.02, heightM: 0.3, areaM2: 2 },
+  { id: "upholstered_chair", label: "Upholstered chair", peakKW: 650, growth: "fast", holdS: 120, decayS: 300, source: "estimate", fuel: POLYURETHANE, sootYield: 0.08, coYield: 0.02, heightM: 0.5, areaM2: 0.5 },
+  { id: "foam_mattress", label: "Foam mattress", peakKW: 900, growth: "fast", holdS: 120, decayS: 300, source: "estimate", fuel: POLYURETHANE, sootYield: 0.1, coYield: 0.02, heightM: 0.3, areaM2: 2 },
   { id: "sofa", label: "Sofa", peakKW: 2000, growth: "fast", holdS: 180, decayS: 400, source: "estimate", fuel: POLYURETHANE, sootYield: 0.08, coYield: 0.02, heightM: 0.5, areaM2: 2 },
   { id: "acoustic_foam", label: "Acoustic foam on walls", peakKW: 1500, growth: "ultrafast", holdS: 120, decayS: 240, source: "estimate", fuel: POLYURETHANE, sootYield: 0.12, coYield: 0.03, heightM: 1.5, areaM2: 4 },
   { id: "deep_fryer", label: "Deep fryer / cooking oil", peakKW: 500, growth: "ultrafast", holdS: 300, decayS: 300, source: "estimate", fuel: OIL, sootYield: 0.04, coYield: 0.01, heightM: 0.9, areaM2: 0.3 },
